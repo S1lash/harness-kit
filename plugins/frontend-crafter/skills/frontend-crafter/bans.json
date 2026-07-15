@@ -1,0 +1,55 @@
+{
+  "_format": 1,
+  "_doc": "Single machine-readable SoT for mechanical bans. lint.mjs consumes this; SKILL.md and directions/_base.md point here, never restate. Only durable, statically-checkable rules live here — perishable taste lives in anti-slop.md + vision.",
+
+  "regexRules": [
+    { "id": "pure-black", "severity": "block", "on": ["css", "html"], "pattern": "#000000\\b|#000\\b(?![0-9a-fA-F])", "message": "Pure #000 reads as unfinished template. Use Zinc-950 / off-black (#0A0A0A–#18181B)." },
+    { "id": "h-screen", "severity": "block", "on": ["css", "html"], "pattern": "\\bh-screen\\b|height:\\s*100vh\\b|min-height:\\s*100vh\\b", "message": "100vh / h-screen jumps on iOS Safari when the URL bar hides. Use min-h-[100dvh] or 100svh." },
+    { "id": "full-vw", "severity": "block", "on": ["css", "html"], "pattern": "\\b100vw\\b|\\bw-screen\\b", "message": "100vw ignores scrollbar width → horizontal overflow. Use width:100% or 100dvw." },
+    { "id": "css-import", "severity": "block", "on": ["css"], "pattern": "@import\\b", "message": "@import creates render-blocking chains. Use <link> or a bundler." },
+    { "id": "positive-tabindex", "severity": "block", "on": ["html"], "pattern": "tabindex=[\"']?[1-9]", "message": "Positive tabindex breaks natural tab order. Use only 0 or -1." },
+    { "id": "innerHTML-dynamic", "severity": "block", "on": ["js"], "pattern": "\\.innerHTML\\s*=\\s*(?!['\"`]\\s*['\"`])", "message": "innerHTML with dynamic content is an XSS vector. Use textContent or a sanitizer." },
+    { "id": "inline-onclick", "severity": "warn", "on": ["html"], "pattern": "\\son(click|load|error|mouseover)=", "message": "Inline event handlers break CSP and are an XSS vector. Use addEventListener." }
+  ],
+
+  "fonts": {
+    "banned": [
+      "Inter", "Roboto", "Arial", "Helvetica", "Helvetica Neue", "Open Sans",
+      "Space Grotesk", "Space Mono",
+      "Times", "Times New Roman", "Georgia", "Garamond", "Palatino",
+      "DM Sans", "DM Serif", "Outfit", "Plus Jakarta Sans", "Plus Jakarta",
+      "Fraunces", "Newsreader", "Lora", "Crimson", "Playfair", "Playfair Display",
+      "Cormorant", "Syne", "IBM Plex", "IBM Plex Sans", "IBM Plex Mono", "Instrument", "Instrument Serif"
+    ],
+    "severity": "block",
+    "note": "Exclusion list only. Selection method (how to PICK a font) lives in reference/type.md — prefer lesser-known geometric/humanist per direction, log the pick to design-memory. The reflex-reject serifs and Space/Plex families are now saturated AI lanes; generic system serifs (Times/Georgia/Garamond) are plain slop.",
+    "message": "This font is a saturated AI-slop tell. Pick a distinctive, characterful face per reference/type.md."
+  },
+
+  "copyTics": {
+    "banned": ["Elevate", "Seamless", "Unleash", "Next-Gen", "Empower", "Revolutionize", "Supercharge", "Game-Changer"],
+    "labelYearPattern": "\\b[A-Z]{3,}\\s*//\\s*20[0-9]{2}\\b",
+    "severity": "warn",
+    "note": "Short-UI-string check. em-dash in SHORT UI strings (buttons/labels/eyebrows) → warn here; em-dash in BODY/editorial copy is text-judged by the copy pass, not by regex."
+  },
+
+  "markup": {
+    "requireImgAlt": true,
+    "requireImgDimensions": true,
+    "requireLabelFor": true,
+    "severity": "block",
+    "note": "img needs meaningful alt (or alt=\"\" if decorative) + width/height (CLS). Form inputs need <label for> (not placeholder-as-label)."
+  },
+
+  "contrast": {
+    "textMin": 4.5,
+    "largeMin": 3.0,
+    "uiMin": 3.0,
+    "note": "Token-pair contrast ONLY: lint computes the WCAG ratio on the fg/bg token pairs declared in design-plan.md (pure JS, works headless). Text-on-image / gradient contrast needs rendering → vision tier, not here."
+  },
+
+  "fabricatedData": {
+    "severity": "advisory",
+    "note": "NOT statically enforceable — flagged in the copy/editorial review pass. Never invent metrics, uptime, response times, user counts, revenue, percentages, testimonials, or logos the user didn't provide. Use bracket [placeholder] and flag it."
+  }
+}

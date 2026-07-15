@@ -1,0 +1,5 @@
+# Shipped template — the agent copies this to <project>/.crafter/.gitignore on first sidecar write.
+# design-system.md / design-plan.md / decisions.md / state.json are WANTED, portable, git-tracked assets.
+# Only binary/regenerable noise is ignored:
+snapshots/
+*.tmp

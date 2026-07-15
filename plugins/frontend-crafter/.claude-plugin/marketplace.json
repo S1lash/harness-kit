@@ -1,0 +1,13 @@
+{
+  "name": "frontend-crafter-marketplace",
+  "owner": {
+    "name": "Ilya Kuzmichev"
+  },
+  "plugins": [
+    {
+      "name": "frontend-crafter",
+      "source": "./",
+      "description": "Distinctive, production-grade frontend design. Request-first pipeline + anti-slop directions + motion depth + persistence."
+    }
+  ]
+}

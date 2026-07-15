@@ -1,0 +1,13 @@
+{
+    "name": "harness-kit-marketplace",
+    "owner": {
+        "name": "Ilya Kuzmichev"
+    },
+    "plugins": [
+        {
+            "name": "harness-kit",
+            "source": "./",
+            "description": "A cloneable, de-anonymized personal harness for working with AI agents: a hot canon of hard rules, self-learning, knowledge + activities that survive sessions, an agent-owned structure, and a concierge stance. /harness:init sets up a freshly-cloned base; /harness:add-skill runs the skill-creation gate; /harness:doctor health-checks it. Solo, cross-agent (Claude / Codex / Cursor), domain-agnostic."
+        }
+    ]
+}
