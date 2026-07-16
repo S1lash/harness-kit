@@ -13,8 +13,8 @@ session.
   no `readlink -f`, no `stat -f|-c`, no `grep -P`).
 - **Line endings — LF, enforced by `.gitattributes`.** A CRLF `.sh` / `.py` from a Windows checkout
   breaks bash and python.
-- **Parity of mechanisms in lockstep.** A shell mechanism with a platform equivalent (`setup.sh` ↔
-  `setup.ps1`) — edit one, edit the other in the same change; same for hooks and symlinks.
+- **Parity of mechanisms in lockstep.** A shell mechanism with a platform equivalent (`install.sh` ↔
+  `install.ps1`) — edit one, edit the other in the same change; same for hooks and symlinks.
 - **Per-agent install wiring is part of parity.** Install / wiring touches per-agent global config for
   each agent runtime the person uses — Claude Code (`~/.claude/`), Codex, Cursor, others — each with
   its own rules-loading / path / symlink mechanics. Whatever install does for one runtime, it does for

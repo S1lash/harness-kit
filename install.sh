@@ -2,7 +2,8 @@
 # Harness Kit installer — conversational, plain-language, cross-platform.
 # Runs on macOS, Linux, and Git Bash on Windows. Bash 3.2-safe:
 # no mapfile / declare -A / ${var^^} / sed -i portability traps / readlink -f.
-# Non-trivial logic is delegated to python3 for portability.
+# Non-trivial logic is delegated to python3 for portability — so python3 is a
+# prerequisite on every platform, Git Bash included (install it first there).
 #
 # What it does: places this base where you want it, names it, records the
 # language you want the agent to talk to you in, wires the canon into every
