@@ -49,6 +49,27 @@ the issue is closed when it isn't.
 - **Trace callers before proposing a fix** — name the invariants the caller enforces, by name not
   line number (line numbers rot).
 
+## Presenting a design
+
+A design / architecture / concept is delivered as a **self-contained HTML artifact**. Keep a textual
+SoT `.md` alongside; the HTML is the rendered view of it, never the source.
+
+**Two kinds, different rules — decide which before drawing:**
+
+- **A working render, for the person alone** (design sandbox, review page): generated diagrams are
+  fine. Keep Mermaid to a safe subset — no parentheses in `participant` / `actor` aliases or
+  `alt` / `else` labels; quote flowchart labels containing punctuation; no stray `?` / `()` / `:`
+  outside quotes. A diagram that fails to parse renders as an error box in the middle of the page.
+- **Anything the person SHOWS to someone else** (a page accompanying a call, a presentation, a
+  concept for a manager): diagrams are **hand-authored inline SVG, not generated** — auto-layout
+  places blocks where it likes, and position carries meaning to a viewer who has thirty seconds and
+  no context. One idea per screen; explain rather than sell.
+- **Encoding, for any standalone HTML handed over as a file:** the browser opens it with no server
+  and no head-skeleton, so without a declaration it guesses the encoding and non-ASCII text renders
+  as mojibake. The `<head>` starts with `<meta charset="utf-8">` + the viewport meta, and the file
+  is written UTF-8 (verify: `file -I x.html` → `charset=utf-8`). Not needed when publishing through
+  a tool that wraps the page in its own `<head>`.
+
 ## Self-verification — evidence, not claims
 
 - After implementing, verify it works (run, compile, check output). No completion claim without

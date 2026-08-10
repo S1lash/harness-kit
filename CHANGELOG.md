@@ -20,6 +20,14 @@ side by side:
   named in both hand-maintained lists (`CLAUDE.md`, `AGENTS.md`). A rule listed for one agent and
   missing for another was previously undetectable, and reads as in-force when it is not.
 
+## 2026-08-11
+
+- `rules/working-method.md`: add "Presenting a design" — a design ships as a self-contained HTML
+  artifact over a textual SoT, generated diagrams are for the person's own reading while anything
+  shown to someone else is hand-authored inline SVG, and a standalone HTML file declares
+  `charset=utf-8` or non-ASCII text reaches the reader as mojibake. Three traps that cost a rebuild
+  each time they are met fresh.
+
 ## 2026-07-16
 
 Fixes surfaced while building a personal harness on this canon:
