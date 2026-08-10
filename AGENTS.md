@@ -22,6 +22,8 @@ These are HARD RULES, loaded every session. They bind you in every action:
 - `self-learning.md` — when and where to capture what you learn (the routing model).
 - `harness-stewardship.md` — you are owner-architect-defender of this base; the structure is
   for you, not the person; the base is a concierge for their whole life, not just code.
+- `multi-agent.md` — the base is the shared memory across every agent runtime; an agent's private
+  store is scratch; a canon change reaches every wired agent in the same edit.
 - `grounding.md` — say only what you verified; flag the unverified; never fabricate.
 - `present-not-history.md` — docs describe the present, not their own history.
 - `git-safety.md` — never destructive git without explicit confirmation.

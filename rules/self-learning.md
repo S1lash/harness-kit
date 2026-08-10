@@ -39,6 +39,8 @@ tool. Then in order:
    - **A raw in-the-moment correction** → `corrections.jsonl` (agent-managed, append-only, invisible
      to the person — the agent reads it to stay consistent; the person never edits it). A signal that
      recurs and proves durable is distilled from here INTO `profile.md`.
+   - **Never the agent runtime's own memory store.** It is scratch, invisible to every other runtime
+     and (in Claude Code) to every other folder — `rules/multi-agent.md`.
 4. **Deep systemic knowledge** (a subsystem's model, flow, behaviour) → Model + Method + Pointer, not
    Snapshot (doctrine/deep-knowledge-pattern.md). A flat snapshot goes stale and breaks on an
    unfamiliar case.

@@ -350,6 +350,35 @@ check() { # check "label" 0|1
 
 if grep -q "Language:" "$PROFILE" 2>/dev/null; then check "your language recorded in profile.md" 0; else check "your language recorded in profile.md" 1; fi
 
+# Canon parity: every rule file is named in BOTH hand-maintained lists, so no rule is
+# silently in force for one agent and absent for another (rules/multi-agent.md).
+PARITY_GAP="$(python3 - "$DEST" <<'PY'
+import os, sys
+base = sys.argv[1]
+rules_dir = os.path.join(base, "rules")
+names = sorted(f for f in os.listdir(rules_dir) if f.endswith(".md")) if os.path.isdir(rules_dir) else []
+gaps = []
+for entry, path in (("CLAUDE.md", os.path.join(base, "CLAUDE.md")),
+                    ("AGENTS.md", os.path.join(base, "AGENTS.md"))):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+    except OSError:
+        gaps.append("%s missing" % entry)
+        continue
+    for name in names:
+        if name not in text:
+            gaps.append("%s not listed in %s" % (name, entry))
+print("; ".join(gaps))
+PY
+)"
+if [ -z "$PARITY_GAP" ]; then
+  check "canon parity (every rule listed for every agent)" 0
+else
+  say "  MISS canon parity: $PARITY_GAP"
+  DOC_OK=0
+fi
+
 if [ "$CLAUDE_WIRED" -eq 1 ]; then
   if [ -f "$HOME_DIR/.claude/CLAUDE.md" ] && grep -q "BEGIN HARNESS-KIT" "$HOME_DIR/.claude/CLAUDE.md" 2>/dev/null; then
     check "Claude Code global wiring" 0

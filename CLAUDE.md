@@ -11,6 +11,7 @@ Cross-agent detail lives in `AGENTS.md`; deep how-to in `doctrine/` (on demand).
 @rules/sot-dry-srp.md
 @rules/self-learning.md
 @rules/harness-stewardship.md
+@rules/multi-agent.md
 @rules/grounding.md
 @rules/present-not-history.md
 @rules/git-safety.md

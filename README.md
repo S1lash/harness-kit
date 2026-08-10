@@ -63,7 +63,7 @@ time / continue" signals — never load history by default.
 
 | Path | What it is |
 |---|---|
-| `rules/` | The canon — 11 hard-rule files, loaded hot every session. Your standard. |
+| `rules/` | The canon — 12 hard-rule files, loaded hot every session. Your standard. |
 | `doctrine/` | On-demand authoring meta — deep-knowledge, edit-checklist, skill-creation gate, knowledge/activities discipline, tool-vs-instrument. |
 | `knowledge/` | Durable understanding. Ships empty with the routing & growth discipline. |
 | `activities/` | Work that survives sessions. Agent-maintained index + strict anti-bias rule. |
