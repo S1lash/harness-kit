@@ -13,10 +13,11 @@ relevant flow fixes what it surfaces.
    that is the agent's global entry point (Claude `~/.claude/CLAUDE.md`, Codex `~/.codex/AGENTS.md`,
    Cursor user rules) naming this base. In a session that starts from a fresh clone of the base,
    `CLAUDE.md` at the repo root carries it and no global wiring exists — that is PASS, not FAIL.
-2. **Canon parity across agents.** The file list in `rules/`, the `@rules/...` list in `CLAUDE.md`,
-   and the canon list in `AGENTS.md` name the same set. Any rule present in one and missing from
-   another is a FAIL naming the file and the surface that lacks it — that rule is silently not in
-   force for at least one runtime (`rules/multi-agent.md`).
+2. **Canon complete, and listed once.** Every file in `rules/` appears in the canon list in
+   `AGENTS.md` — the one hand-maintained list. A rule missing there is a FAIL naming it: it is
+   silently not in force for every runtime. A second copy of the list anywhere else is also a FAIL
+   — it drifts, and the person goes on believing a rule applies (`rules/multi-agent.md`).
+   `python3 tools/check_kit.py` proves both.
 3. **The base is one thing.** The repository root is the base root, `projects/` is inside it, and
    nothing important sits outside. A `projects/` folder beside the base instead of inside is a FAIL:
    nothing there can ever reach the person's phone.

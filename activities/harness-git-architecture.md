@@ -36,6 +36,14 @@ exists to make that question rare and, when it happens, answerable in one senten
   a throwaway base built from the pre-wave-1 state: kit paths replaced, retired commands dropped,
   the person's own index rows, profile and project untouched, second run idempotent.
 - ✅ `VERSION` + the daily version check at session start.
+- ✅ One canon list. `AGENTS.md` is the contract, `CLAUDE.md` imports it, the installers point every
+  runtime at `AGENTS.md`. The parity check is gone with the duplicate that made it necessary.
+- ✅ `tools/check_kit.py` — the author-side gate, every check verified red and green: a removal
+  without a retirement, a retired path still shipping, a version mirror out of step, a rule missing
+  from the list, the list restated in `CLAUDE.md`, a path owned twice, a tool declared nowhere, a
+  corrupt manifest that would otherwise pass by having nothing to check.
+- ✅ Update verified across unrelated git histories — the `install.sh` copy path, where a base
+  shares no commit with the kit.
 
 ## Open — wave 2 leftovers
 

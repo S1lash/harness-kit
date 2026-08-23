@@ -107,6 +107,8 @@ A skill is a prompt the model will execute. "Written" ≠ "works".
 
 ## Registration
 
-Register the command under `commands/` (+ a helper under `tools/{skill}/` if you added one). If the
+Register the command under `.claude/skills/<name>/SKILL.md` — the person's own capability home,
+which no kit update ever touches. (`.claude/commands/` belongs to the kit and is replaced wholesale;
+authoring there loses the skill at the next update.) Add a helper (+ a helper under `tools/{skill}/` if you added one). If the
 decision to add the skill embodies a non-trivial choice, record it in `knowledge/decisions.md` (a
 mechanical thin skill needs none).

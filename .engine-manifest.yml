@@ -52,6 +52,7 @@ engine:
   # The kit's own executables and the session wiring
   - tools/sync.py
   - tools/update.py
+  - tools/check_kit.py
   - tools/mcp-wrapper.js
   - tools/lib/
   - .claude/commands/
@@ -108,6 +109,11 @@ exclude:
   # This machine's own settings — carrying them to another device is how two
   # surfaces start behaving differently (rules/device-sync.md)
   - .claude/settings.local.json
+
+  # The person's own capabilities. `.claude/commands/` beside it is the kit's and
+  # is replaced wholesale on update, so anything authored FOR this person lives
+  # here instead and is never touched (doctrine/skill-creation.md).
+  - .claude/skills/
 
 retired:
   # The commands moved to `.claude/commands/harness-*.md`, where a fresh clone

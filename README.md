@@ -88,7 +88,8 @@ you follow it whether or not the session-start hook ran.
 | `plugins/frontend-crafter/` | Bundled: an anti-slop frontend-design skill, ready to use. |
 | `profile.md` | The one personal file — *who you are*, grown carefully by the agent. Not a habit tracker. |
 | `install.sh` · `install.ps1` | The conversational, cross-platform installer. |
-| `AGENTS.md` · `CLAUDE.md` | Cross-agent and Claude entry points. |
+| `AGENTS.md` | The contract every runtime reads — the canon list lives here and nowhere else. |
+| `CLAUDE.md` | One import of `AGENTS.md` plus Claude-only notes. |
 
 ---
 

@@ -218,14 +218,6 @@ Say "Now let's connect your base to the AI agent(s) you use, so the canon"
 Say "is active from ANY folder — you never have to point the agent at it."
 Say ""
 
-function Gen-RuleImports {
-  $lines = @()
-  Get-ChildItem -Path (Join-Path $Dest "rules") -Filter '*.md' | Sort-Object Name | ForEach-Object {
-    $lines += "@$($_.FullName)"
-  }
-  return ($lines -join "`n")
-}
-
 # ---- Claude Code -----------------------------------------------------------
 $ClaudeWired = $false
 if (AskYes "Do you use Claude Code?" "Y") {
@@ -240,11 +232,9 @@ if (AskYes "Do you use Claude Code?" "Y") {
 This is your operating base. ``$Dest/knowledge/_index.md`` (durable knowledge) and
 ``$Dest/activities/_index.md`` (ongoing work) are reachable from any working directory, every session.
 
-Hot canon — loaded every session:
-$(Gen-RuleImports)
-@$Dest/profile.md
+Read this and follow it, every session. It carries the canon and imports it:
+@$Dest/AGENTS.md
 
-Full three-tier loading model: read ``$Dest/CLAUDE.md``.
 Converse in the language set in ``$Dest/profile.md``; code, comments, and identifiers stay English.
 "@
   Upsert-Block (Join-Path $ClaudeDir "CLAUDE.md") "HARNESS-KIT" $block
@@ -389,6 +379,26 @@ Check "sessions start by catching up" (Test-Path (Join-Path $Dest ".claude/setti
 Check "python3 available (needed to catch up automatically)" ([bool](Get-Command python3 -ErrorAction SilentlyContinue))
 if ($GitOn) { Check "your base has a private place online" ([bool](git -C $Dest remote get-url origin 2>$null)) }
 Check "your language recorded in profile.md" ((Get-Content -Raw -LiteralPath $ProfileFile) -match 'Language:')
+
+# Canon completeness: every rule file is named in the ONE list that carries the canon to every
+# runtime. A rule missing there is silently not in force (rules/multi-agent.md). Done in pure
+# PowerShell so the check still runs on a machine without python3.
+$contractPath = Join-Path $Dest "AGENTS.md"
+if (Test-Path $contractPath) {
+  $contract = Get-Content -Raw -LiteralPath $contractPath
+  $missing = @()
+  Get-ChildItem -Path (Join-Path $Dest "rules") -Filter '*.md' -ErrorAction SilentlyContinue | ForEach-Object {
+    if ($contract -notmatch [regex]::Escape($_.Name)) { $missing += $_.Name }
+  }
+  if ($missing.Count -eq 0) {
+    Check "canon complete (every rule listed in AGENTS.md)" $true
+  } else {
+    Say "  MISS canon complete: $($missing -join ', ') not listed in AGENTS.md"
+    $script:DocOk = $false
+  }
+} else {
+  Check "canon complete (every rule listed in AGENTS.md)" $false
+}
 if ($ClaudeWired) {
   $gcm = Join-Path $HomeDir ".claude/CLAUDE.md"
   if ((Test-Path $gcm) -and ((Get-Content -Raw -LiteralPath $gcm) -match 'BEGIN HARNESS-KIT')) {

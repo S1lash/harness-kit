@@ -1,45 +1,13 @@
-# CLAUDE.md — hot entry (Claude Code)
+# CLAUDE.md — Claude Code entry
 
-This is the person's harness base. You operate from here. Terse by design — it's loaded hot.
-Cross-agent detail lives in `AGENTS.md`; deep how-to in `doctrine/` (on demand).
+@AGENTS.md
 
-## Canon — hot, every session (HARD RULES)
+## Claude Code specifics
 
-@rules/core-principles.md
-@rules/communication.md
-@rules/coding-standards.md
-@rules/sot-dry-srp.md
-@rules/self-learning.md
-@rules/harness-stewardship.md
-@rules/multi-agent.md
-@rules/device-sync.md
-@rules/grounding.md
-@rules/present-not-history.md
-@rules/git-safety.md
-@rules/cross-platform.md
-@rules/working-method.md
-@profile.md
-
-## Harness home
-
-This directory is the base, and it is one git repository — **its root IS the base**, always.
-`knowledge/_index.md`, `activities/_index.md` and `projects/_index.md` here are your maps,
-reachable from any working directory. The person builds things in `projects/` inside this
-repository, so any surface that has the base has everything. You own the structure — the person
-never manages folders.
-
-The base follows the person across their computer, their phone, and any agent working for them.
-Keeping those in step is your job, not theirs: `rules/device-sync.md`.
-
-## Three-tier loading model
-
-1. **Hot canon** — the `rules/` above + `profile.md`. Loaded every session; always in force.
-2. **On-demand knowledge** — `knowledge/_index.md` → the object-homes it maps. Read when a
-   request touches durable understanding the person may have given you before.
-3. **Guarded activities** — `activities/_index.md`. Do NOT load by default. Consult only on
-   narrow signals ("we did", "last time", "continue…", overlaps an existing initiative).
-   Otherwise reason fresh — loading past activity by default biases you to stale framing.
-
-## Language
-
-Read `profile.md` and converse in the person's language. Base content and code stay English.
+- **Commands** live in `.claude/commands/` — `/harness-sync`, `/harness-update`, `/harness-doctor`,
+  `/harness-init`, `/harness-add-skill`, `/harness-project-init`. That directory belongs to the kit
+  and an update replaces it: anything you author for this person goes to `.claude/skills/`, which
+  is theirs and is never touched.
+- **`.claude/settings.json`** catches the base up at session start and checks once a day whether the
+  kit has a newer version. If neither ran — another runtime, a machine without python — do both
+  yourself: `rules/device-sync.md` is the contract, the hook is only a convenience.

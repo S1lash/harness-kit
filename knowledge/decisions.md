@@ -8,7 +8,24 @@
 > decision IS the content here. This is the one place "why we chose X over Y" is kept — everywhere
 > else states only the current chosen state and links here for the why.
 
-## 2026-08-24 — An update replaces the kit's paths; it never merges
+## 2026-08-23 — One canon list, in AGENTS.md; CLAUDE.md imports it
+
+**Chosen:** `AGENTS.md` carries the canon list and is the contract every runtime reads.
+`CLAUDE.md` is one `@AGENTS.md` import plus Claude-only notes. Installers point each runtime's
+global entry at `AGENTS.md` rather than enumerating rules.
+
+**Alternatives considered:** keeping full twins and checking them for parity, as before; making
+`CLAUDE.md` the source and `AGENTS.md` the derived copy.
+
+**Why:** the harness is agent-agnostic, so the agnostic file is the source and the runtime-specific
+one is the adapter — not the other way round. The parity check existed only because we had written
+the list twice; removing the duplicate removes the failure it was watching for, which is better
+than watching for it. Claude Code reads `CLAUDE.md` and not `AGENTS.md`, and its own documented
+answer to that is an import rather than a copy. A side effect worth having: relative imports resolve
+from the file that contains them, so a global entry pointing at `AGENTS.md` picks up every rule
+automatically and adding a rule no longer means re-running the installer anywhere.
+
+## 2026-08-23 — An update replaces the kit's paths; it never merges
 
 **Chosen:** `.engine-manifest.yml` declares every path as the kit's or the person's, and
 `tools/update.py` checks out only the kit's from the `harness-kit` remote. Paths the kit dropped
@@ -30,7 +47,7 @@ against CRLF-mangled paths and Windows rewriting `<ref>:<path>` — both of whic
 update into a silent success. Removing the boundary removes the class, and one file runs everywhere
 a shell pair would have to be kept in step.
 
-## 2026-08-24 — Every project carries its own contract, written by the agent
+## 2026-08-23 — Every project carries its own contract, written by the agent
 
 **Chosen:** each project has `AGENTS.md` (the contract), a `CLAUDE.md` importing it, and its own
 `<project>/.claude/knowledge/` and `<project>/.claude/decisions.md`. The agent writes it when the project is born and

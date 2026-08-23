@@ -263,13 +263,6 @@ TMP_BLOCK="$(python3 -c 'import tempfile,sys; print(tempfile.mkstemp(suffix=".md
 cleanup() { rm -f "$TMP_BLOCK" 2>/dev/null; }
 trap cleanup EXIT
 
-gen_rule_imports() { # emits one @<abs-path> line per rule file
-  for f in "$DEST"/rules/*.md; do
-    [ -e "$f" ] || continue
-    printf '@%s\n' "$f"
-  done
-}
-
 # ---- Claude Code -----------------------------------------------------------
 CLAUDE_WIRED=0
 if ask_yes "Do you use Claude Code?" "Y"; then
@@ -282,11 +275,8 @@ if ask_yes "Do you use Claude Code?" "Y"; then
     printf '**HARNESS HOME:** `%s`\n' "$DEST"
     printf 'This is your operating base. `%s/knowledge/_index.md` (durable knowledge) and\n' "$DEST"
     printf '`%s/activities/_index.md` (ongoing work) are reachable from any working directory, every session.\n\n' "$DEST"
-    printf 'Hot canon — loaded every session:\n'
-    gen_rule_imports
-    printf '@%s/profile.md\n' "$DEST"
-    printf '\n'
-    printf 'Full three-tier loading model: read `%s/CLAUDE.md`.\n' "$DEST"
+    printf 'Read this and follow it, every session. It carries the canon and imports it:\n'
+    printf '@%s/AGENTS.md\n\n' "$DEST"
     printf 'Converse in the language set in `%s/profile.md`; code, comments, and identifiers stay English.\n' "$DEST"
   } > "$TMP_BLOCK"
   upsert_block "$CLAUDE_DIR/CLAUDE.md" "HARNESS-KIT" "$TMP_BLOCK"
@@ -441,30 +431,26 @@ fi
 
 if grep -q "Language:" "$PROFILE" 2>/dev/null; then check "your language recorded in profile.md" 0; else check "your language recorded in profile.md" 1; fi
 
-# Canon parity: every rule file is named in BOTH hand-maintained lists, so no rule is
-# silently in force for one agent and absent for another (rules/multi-agent.md).
+# Canon completeness: every rule file is named in the ONE list that carries the canon to
+# every runtime. A rule missing there is silently not in force (rules/multi-agent.md).
 PARITY_GAP="$(python3 - "$DEST" <<'PY'
 import os, sys
 base = sys.argv[1]
 rules_dir = os.path.join(base, "rules")
 names = sorted(f for f in os.listdir(rules_dir) if f.endswith(".md")) if os.path.isdir(rules_dir) else []
 gaps = []
-for entry, path in (("CLAUDE.md", os.path.join(base, "CLAUDE.md")),
-                    ("AGENTS.md", os.path.join(base, "AGENTS.md"))):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            text = f.read()
-    except OSError:
-        gaps.append("%s missing" % entry)
-        continue
-    for name in names:
-        if name not in text:
-            gaps.append("%s not listed in %s" % (name, entry))
+try:
+    with open(os.path.join(base, "AGENTS.md"), "r", encoding="utf-8") as f:
+        text = f.read()
+except OSError:
+    gaps.append("AGENTS.md missing")
+    text = ""
+gaps += ["%s not listed in AGENTS.md" % n for n in names if n not in text]
 print("; ".join(gaps))
 PY
 )"
 if [ -z "$PARITY_GAP" ]; then
-  check "canon parity (every rule listed for every agent)" 0
+  check "canon complete (every rule listed in AGENTS.md)" 0
 else
   say "  MISS canon parity: $PARITY_GAP"
   DOC_OK=0

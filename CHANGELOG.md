@@ -28,9 +28,12 @@ side by side:
   `charset=utf-8` or non-ASCII text reaches the reader as mojibake. Three traps that cost a rebuild
   each time they are met fresh.
 
-## 2026-08-24
+## 2026-08-23
 
-The kit can now reach the people running it, and a project can be opened cold.
+One base, working the same from a computer, a phone, and an agent running on a server. The pieces
+that made those three diverge silently, closed together:
+
+The kit can now reach the people running it, and a project can be opened cold:
 
 - Add `.engine-manifest.yml` — the source of truth for which paths belong to the kit and which
   belong to the person, in four categories: `engine:` (replaced by an update), `template:` (seeded
@@ -54,10 +57,22 @@ The kit can now reach the people running it, and a project can be opened cold.
   The person is never asked for it: they will not notice it missing, and a cold session pays for
   its absence every time.
 
-## 2026-08-23
+One canon list instead of two, and a gate that catches a bad release before anyone runs it:
 
-One base, working the same from a computer, a phone, and an agent running on a server. The pieces
-that made those three diverge silently, closed together:
+- `AGENTS.md` is now the single contract every runtime reads, carrying the one hand-maintained
+  canon list; `CLAUDE.md` is one import of it plus Claude-only notes. The parity check existed only
+  because the list was written twice — the duplicate is gone, so is the class of drift where a rule
+  is in force for one runtime and silently absent for another. The installers point every runtime's
+  global entry at `AGENTS.md`, so adding a rule never requires re-running them.
+- `.claude/skills/` is declared the person's own capability home. `.claude/commands/` beside it is
+  the kit's and is replaced on update: a skill authored there would vanish at the next update,
+  silently.
+- Add `tools/check_kit.py`. Its structural half runs on any base and is what `/harness-doctor`
+  calls; `--authoring` adds the release checks — a removal without a `retired:` line, a retired path
+  that still ships, a tool declared nowhere, kit paths changed without `VERSION` moving, `VERSION`
+  moved without `CHANGELOG.md`. Every one of them is a mistake that otherwise surfaces only on
+  somebody else's machine.
+
 
 - `projects/` moved **inside** the base. A session opened from a fresh clone gets one repository;
   anything beside it does not exist there. `projects/_index.md` maps them, including a project the

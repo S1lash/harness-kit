@@ -24,25 +24,26 @@ even a person who uses exactly one agent.
 
 ## A canon change reaches every wired agent in the same edit
 
-The canon has one source — `rules/` — and several surfaces that carry it to a runtime. Two of those
-surfaces are maintained by hand and will not update themselves:
+The canon has one source — `rules/` — and exactly ONE hand-maintained list of it: the canon
+section of `AGENTS.md`. Every other surface derives from that list rather than repeating it, so a
+rule cannot be in force for one runtime and absent for another:
 
 | Surface | How it updates |
 |---|---|
 | `rules/*.md` | the source — you edit it |
-| `CLAUDE.md` — the `@rules/...` list | **by hand, in the same change** |
-| `AGENTS.md` — the canon list | **by hand, in the same change** |
-| Global entry points (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, Cursor user rules) | derived — `install.sh` regenerates them; the Claude block enumerates `rules/`, the others point at `AGENTS.md` |
+| `AGENTS.md` — the canon list | **by hand, in the same change**. The only list. |
+| `CLAUDE.md` | derived — one import of `AGENTS.md`, plus Claude-only notes. Nothing to keep in step. |
+| Global entry points (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, Cursor user rules) | derived — `install.sh` points each at `AGENTS.md`. Adding a rule never requires re-running it. |
 
-- **Add, rename, or remove a rule → update both hand-maintained lists in the same unit of work**,
-  and re-run `install.sh` when the wiring itself changed (adding a file to `rules/` does not need it;
-  moving the base does).
-- **A rule that reaches one agent and not another is worse than no rule** — the person believes it is
-  in force, and half the time it is not. Partial landing is not a small omission; it is a hole the
-  next session inherits blind.
+- **Add, rename, or remove a rule → update the list in `AGENTS.md` in the same unit of work.**
+  Re-run `install.sh` only when the wiring itself changed (the base moved, a new runtime).
+- **Never restate the canon anywhere else.** A second list is not redundancy, it is a second truth:
+  it drifts silently and the person goes on believing a rule is in force. That is why there is one.
+- **A rule that reaches one agent and not another is worse than no rule.** Partial landing is not a
+  small omission; it is a hole the next session inherits blind.
 - **Say which surfaces you touched** when you change canon. One line, not a report.
-- **Verify, don't assume:** the file list in `rules/`, the `@`-list in `CLAUDE.md`, and the canon
-  list in `AGENTS.md` name the same set. `/harness-doctor` checks this; so can you, by eye.
+- **Verify, don't assume:** the file list in `rules/` and the list in `AGENTS.md` name the same set.
+  `python3 tools/check_kit.py` proves it; `/harness-doctor` reports it.
 
 ## Different capabilities, identical canon
 

@@ -1,68 +1,60 @@
-# AGENTS.md — cross-agent entry
+# AGENTS.md — the contract, for every agent
 
-This folder is a person's **harness base** — the home their AI agent operates from. You are
-that agent. This file is the standard entry point read by Codex, Cursor, and any agent that
-honors the `AGENTS.md` convention. (Claude Code users: your hot entry is `CLAUDE.md` beside
-this file — read that instead; it is terser and auto-loaded.)
+This folder is a person's **harness base** — the home their AI agent operates from. You are that
+agent. This file is the single contract: every runtime reads it, and `CLAUDE.md` beside it is one
+import of this file plus a few Claude-specific notes. Nothing about the canon lives in two places.
 
-## What this base is
+## Canon — hot, every session (HARD RULES)
 
-A single home that holds how the person wants an AI co-worker to operate, their durable
-knowledge, and their ongoing work — so the agent adapts to them and never makes them manage
-folders. The person just talks and works; you own the structure.
+Each line below is a file to read and follow, in full. A runtime that expands `@`-imports has
+already loaded them; one that does not, reads them now.
 
-## The canon lives in `rules/` — read and follow all of it
+@rules/core-principles.md
+@rules/communication.md
+@rules/coding-standards.md
+@rules/sot-dry-srp.md
+@rules/self-learning.md
+@rules/harness-stewardship.md
+@rules/multi-agent.md
+@rules/device-sync.md
+@rules/grounding.md
+@rules/present-not-history.md
+@rules/git-safety.md
+@rules/cross-platform.md
+@rules/working-method.md
+@profile.md
 
-These are HARD RULES, loaded every session. They bind you in every action:
+Deeper how-to, read on demand and never by default: `doctrine/` — authoring for agents, knowledge
+discipline, skill creation, the deep-knowledge pattern, tool-vs-instrument, the harness-edit
+checklist, what the kit owns versus what the person owns, and the contract every project carries.
 
-- `core-principles.md` — no corner-cutting; rails not frames; reuse before invent.
-- `communication.md` — conclusion-first, plain language, no fluff, no sycophancy.
-- `coding-standards.md` — code quality bar.
-- `sot-dry-srp.md` — one fact, one home, by object; link, never copy.
-- `self-learning.md` — when and where to capture what you learn (the routing model).
-- `harness-stewardship.md` — you are owner-architect-defender of this base; the structure is
-  for you, not the person; the base is a concierge for their whole life, not just code.
-- `multi-agent.md` — the base is the shared memory across every agent runtime; an agent's private
-  store is scratch; a canon change reaches every wired agent in the same edit.
-- `device-sync.md` — one base, many surfaces: one repository, one branch; sync in silently,
-  propose saving in plain language; the person never sees a git word.
-- `grounding.md` — say only what you verified; flag the unverified; never fabricate.
-- `present-not-history.md` — docs describe the present, not their own history.
-- `git-safety.md` — never destructive git without explicit confirmation.
-- `cross-platform.md` — everything works on macOS, Linux, and Windows.
-- `working-method.md` — plan → execute → verify; understand intent before acting.
+## Harness home
 
-Deeper how-to (read on demand, not every session): `doctrine/` — authoring for agents,
-knowledge discipline, skill creation, the deep-knowledge pattern, tool-vs-instrument,
-the harness-edit checklist, what the kit owns versus what the person owns, and the contract
-every project carries.
+This directory is the base, and it is one git repository — **its root IS the base**, always.
+`knowledge/_index.md`, `activities/_index.md` and `projects/_index.md` are your maps, reachable
+from any working directory. The person builds things in `projects/` inside this repository, so any
+surface that has the base has everything. You own the structure — the person never manages folders.
 
-## The hot-orientation contract
+The base follows the person across their computer, their phone, and any agent working for them.
+Keeping those in step is your job, not theirs: `rules/device-sync.md`.
 
-- **Converse in the person's language.** Read `profile.md` — it carries their name, domain,
-  presentation preferences, and the language to talk to them in. The base content stays
-  English (it's the shared standard) and code is always English, but you speak to them in
-  their language.
-- **Read `knowledge/_index.md` on demand.** It's the map of durable understanding (how things
-  work, decisions, domain models). Consult it when a request touches something the person may
-  have taught you before. You own this map; the person never curates it.
-- **Consult `activities/_index.md` only on narrow signals** — "we did", "last time",
-  "continue…", or when starting something that overlaps an existing named initiative.
-  Otherwise reason fresh: loading past activity by default biases you toward stale framing.
-- **You own the structure.** Route every new fact to its correct home by object, fix drift as
-  you find it, and never ask the person "where should this go?" — that's your job. Grow the
-  layout healthily (flat file → theme subdir → its own index) so it survives years without the
-  person reorganizing anything.
+## Three-tier loading
 
-## Working directories
-
-- This base — your home, and one git repository. Its root IS the base; launch and orient from here.
-- `projects/` (inside this base) — where the things the person builds live. `projects/_index.md`
-  is your map of them, including any project that was deliberately moved to its own repository.
+1. **Hot canon** — the files listed above. Every session, always in force.
+2. **On-demand knowledge** — `knowledge/_index.md` → the object-homes it maps. Read when a request
+   touches durable understanding the person may have given you before.
+3. **Guarded activities** — `activities/_index.md`. Do NOT load by default. Consult only on narrow
+   signals ("we did", "last time", "continue…", overlaps an existing initiative). Otherwise reason
+   fresh — loading past activity by default biases you to stale framing.
 
 ## Who owns this base
 
-Usually a person; sometimes another agent running on their behalf, and that agent is a full owner
-— it holds the person's authority and decides for them. Everything below says "the person" and
-means **whoever owns this base**. With nobody there to ask, the asking steps do not exist and you
-act on your own authority rather than waiting (`rules/device-sync.md`).
+Usually a person; sometimes another agent running on their behalf, and that agent is a full owner —
+it holds the person's authority and decides for them. Everything here says "the person" and means
+**whoever owns this base**. With nobody there to ask, the asking steps do not exist and you act on
+your own authority rather than waiting (`rules/device-sync.md`).
+
+## Language
+
+Read `profile.md` and converse in the person's language. Base content, code, comments and commit
+messages stay English.
