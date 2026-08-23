@@ -169,12 +169,33 @@ def dirty_engine_paths(root: Path, ref: str, engine_paths: list) -> list:
     return dirty
 
 
+def seed_missing_templates(root: Path, ref: str) -> list:
+    """Create the seed files this base never received; never touch one it already has.
+
+    A template seeds at clone time and an update leaves it alone — that is what keeps a person's
+    own rows safe. But a template ADDED after their clone therefore reaches them never, while the
+    canon arriving in the same update names it as though it were there. Creating only what is
+    absent keeps both properties: nothing of theirs is overwritten, and the file the rules point
+    at exists.
+    """
+    created = []
+    for relpath in manifest_lib.read_section("template", root):
+        if (root / relpath).exists() or not ref_has_path(ref, relpath, root):
+            continue
+        git("checkout", ref, "--", relpath, root=root)
+        if (root / relpath).exists():
+            created.append(relpath)
+    return created
+
+
 def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
     if not require_remote(remote, root):
+        address = manifest_lib.read_kit_remote(root)
         return fail(
             "this base is not connected to the kit it came from, so it cannot be updated.",
-            "Tell the person that plainly and offer to connect it.",
-            "The remote is named '%s' and points at the kit's repository." % remote,
+            "This is normal on a device that only ever cloned their base: the connection is",
+            "machine-local and no clone carries it. Tell the person in their words, then:",
+            "  git remote add %s %s" % (remote, address or "<the kit's repository>"),
         )
 
     ref = "%s/%s" % (remote, branch)
@@ -207,6 +228,9 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
             # so everything the update ADDS renders as a deletion.
             stat = git_ok("diff", "--stat", "-R", ref, "--", relpath, root=root)
             print("  - %s%s" % (relpath, "" if not stat else "\n      " + stat.replace("\n", "\n      ")))
+        for relpath in manifest_lib.read_section("template", root):
+            if not (root / relpath).exists() and ref_has_path(ref, relpath, root):
+                print("  + add %s (a seed this base never received)" % relpath)
         removed = retire_lib.run(root, dry_run=True)
         for relpath in removed:
             print("  - drop %s (the kit no longer has it)" % relpath)
@@ -214,13 +238,16 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
                                                           version_upstream or "?"))
         return 0
 
+    seeded = seed_missing_templates(root, ref)
     resolved, absent, changed = 0, 0, 0
+    changed_paths = []
     for relpath in engine_paths:
         if not ref_has_path(ref, relpath, root):
             absent += 1
             continue
         if git("diff", "--quiet", ref, "--", relpath, root=root)[0] != 0:
             changed += 1
+            changed_paths.append(relpath)
         git("checkout", ref, "--", relpath, root=root)
         resolved += 1
 
@@ -253,12 +280,18 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
             "inspect with: git status",
         )
 
-    print("%s %d kit path(s) checked, %d changed, %d absent, %d dropped — %s -> %s"
-          % (PREFIX, resolved, changed, absent, len(removed), version_before or "?",
-             version_after or "?"))
+    print("%s %d kit path(s) checked, %d changed, %d absent, %d added, %d dropped — %s -> %s"
+          % (PREFIX, resolved, changed, absent, len(seeded), len(removed),
+             version_before or "?", version_after or "?"))
+    # Name every path, never just a count: an overwrite the person cannot see is one they cannot
+    # object to, and `.claude/settings.json` is a kit path they may well have edited.
+    for relpath in changed_paths:
+        print("  ~ replaced %s" % relpath)
+    for relpath in seeded:
+        print("  + added %s (a seed this base never received)" % relpath)
     for relpath in removed:
         print("  - dropped %s" % relpath)
-    if not changed and not removed:
+    if not changed and not removed and not seeded:
         print("YOU MUST: nothing arrived — the base was already current. Say so in one short "
               "line only if the person asked; otherwise say nothing.")
         return 0

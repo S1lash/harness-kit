@@ -22,6 +22,7 @@ _ENTRY = re.compile(r"^\s*-\s+(.+?)\s*$")
 # as a path that does not exist, which every consumer then reads as "absent".
 _INLINE_COMMENT = re.compile(r"\s+#.*$")
 _VERSION = re.compile(r"^version:\s*(.+?)\s*$", re.M)
+_KIT_REMOTE = re.compile(r"^kit_remote:\s*(.+?)\s*$", re.M)
 
 
 def repo_root() -> Path:
@@ -59,6 +60,12 @@ def read_section(section: str, root: Path | None = None) -> list[str]:
 def read_version(root: Path | None = None) -> str:
     """The kit version the manifest declares, or an empty string."""
     match = _VERSION.search(manifest_path(root).read_text(encoding="utf-8"))
+    return match.group(1).strip() if match else ""
+
+
+def read_kit_remote(root: Path | None = None) -> str:
+    """The kit's own address, so a base that lost the remote is reconnected without guessing."""
+    match = _KIT_REMOTE.search(manifest_path(root).read_text(encoding="utf-8"))
     return match.group(1).strip() if match else ""
 
 

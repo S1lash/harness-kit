@@ -42,6 +42,14 @@
 
 version: 0.2.0
 
+# Where the kit itself lives. A base reaches it through a remote named `harness-kit`, and that
+# remote is git config — it does not survive a clone. A second device, or a phone that has only
+# ever seen a fresh clone, therefore has no way to reconnect unless the address is repo CONTENT.
+# It is also what tells an installer whether an existing `origin` belongs to the kit or to the
+# person: matching on the NAME alone strips the origin of anyone whose own repository is called
+# harness-kit, which is the name this kit's own quickstart suggests.
+kit_remote: https://github.com/S1lash/harness-kit
+
 engine:
   # The canon — loaded hot in every session
   - rules/

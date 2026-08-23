@@ -63,6 +63,7 @@ def read_state():
         "offline": False,
         "identity": True,
         "detached": False,
+        "branches": 1,
     }
     if not state["is_repo"]:
         return state
@@ -73,6 +74,9 @@ def read_state():
     state["remote_url"] = git_ok("remote", "get-url", "origin")
     state["upstream"] = git_ok("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
     state["identity"] = bool(git_ok("config", "user.email")) and bool(git_ok("config", "user.name"))
+
+    listing = git_ok("for-each-ref", "--format=%(refname:short)", "refs/heads/") or ""
+    state["branches"] = len([line for line in listing.splitlines() if line.strip()])
 
     porcelain = git_ok("status", "--porcelain") or ""
     state["unsaved"] = [line[3:] for line in porcelain.splitlines() if line]
@@ -130,6 +134,9 @@ def describe(state, action_taken, directive):
     else:
         lines.append("sync: in step with the remote")
 
+    if state["branches"] > 1:
+        lines.append("branches: %d — a base has one; the extra ones are invisible on a phone"
+                     % state["branches"])
     if not state["identity"]:
         lines.append("identity: git has no name/email set — saving will fail until it does")
     if action_taken:
