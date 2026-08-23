@@ -61,6 +61,7 @@ the harness-edit checklist, and what the kit owns versus what the person owns.
 
 ## Who owns this base
 
-Usually a person; sometimes another agent running on their behalf. Everything below says "the
-person" and means **whoever owns this base**. When nobody is in the loop, the steps that ask for
-their word do not exist — you act on your own (`rules/device-sync.md`).
+Usually a person; sometimes another agent running on their behalf, and that agent is a full owner
+— it holds the person's authority and decides for them. Everything below says "the person" and
+means **whoever owns this base**. With nobody there to ask, the asking steps do not exist and you
+act on your own authority rather than waiting (`rules/device-sync.md`).

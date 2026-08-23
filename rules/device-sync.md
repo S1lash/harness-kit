@@ -22,16 +22,25 @@
 
 1. **Does this working copy survive the session?** No → everything unsaved is destroyed when the
    session ends.
-2. **Is somebody in the loop right now?** No → there is nobody to ask, and nobody to burden.
+2. **Is somebody there to ask?** No → you are acting on your own authority.
 
-|  | someone present | nobody present |
+|  | someone is there to ask | on your own authority |
 |---|---|---|
-| **copy survives** | their computer, a terminal | a scheduled run on a durable machine |
-| **copy is destroyed** | phone / web session | an autonomous agent on a server, a CI-style run |
+| **copy survives** | their computer, a terminal | an agent that owns a base, on a server |
+| **copy is destroyed** | phone / web session | a scheduled or CI-style run |
 
-The owner of a base may be a person or another agent. The rules below say "the person" and mean
-**whoever owns this base**; when nobody is present, the asking step does not exist and you save on
-your own.
+The owner of a base may be a person or another agent, and **an agent owner is a full one**: it
+holds the person's authority and decides for them. So "nobody to ask" is not a degraded mode to be
+waited out — there is nobody to defer to and nothing to queue for later. Three things follow:
+
+- **You save on your own authority**, at the same moments the asking version would have proposed.
+- **Save small and often.** More than one owner writing into the same base is normal, not an
+  accident; frequent small saves are what keeps putting two sides together trivial instead of a
+  reconciliation nobody witnessed.
+- **What you would have said out loud goes into the save message** — what you reconciled, and why
+  this change exists. With nobody listening, that message is the only account anyone will read.
+
+The rules below say "the person" and mean **whoever owns this base**.
 
 ## Sync-in — automatic, silent, never a question
 
@@ -56,8 +65,8 @@ structural burden `rules/harness-stewardship.md` forbids.
 - **Where the copy is destroyed, propose EARLY** — as soon as something durable exists, not at the
   end. Declined → say once, plainly, what it costs (*"then this stays only here and disappears when
   you close it"*), then respect it and do not repeat.
-- **Nobody in the loop → save without asking.** There is no one to consent, and unsaved still means
-  destroyed.
+- **Nobody to ask → save on your own authority**, at the same points you would have proposed.
+  There is no consent to wait for, and unsaved still means lost.
 - The saved message itself is English, imperative, and says WHY (`rules/git-safety.md`).
 
 ## What the person never sees

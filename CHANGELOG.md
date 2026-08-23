@@ -40,8 +40,10 @@ that made those three diverge silently, closed together:
 - Add `rules/device-sync.md` (hot canon): one repository, one branch; bring changes in silently
   because nobody would choose a stale base; propose saving in one plain sentence and then stop
   asking for the session; never a git word in front of the person. Behaviour keyed to whether the
-  working copy survives and whether anybody is in the loop — so a headless agent owning its own
-  base is the same rule, not an exception.
+  working copy survives and whether there is anybody to ask — so an agent that owns a base is the
+  same rule, not an exception. An agent owner holds the person's authority and decides for them:
+  it saves on its own, small and often because concurrent writers are normal, and puts what it
+  would have said out loud into the save message.
 - `rules/git-safety.md`: saving is proactive in the person's base and asked in a repository of
   code; branch-first applies to code, not to the base.
 - `tools/sync.py` holds the mechanics and `.claude/settings.json` runs its safe part at session
