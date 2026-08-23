@@ -13,6 +13,18 @@
                         ],
                         "timeout": 120,
                         "statusMessage": "Bringing your base up to date"
+                    },
+                    {
+                        "type": "command",
+                        "command": "python3",
+                        "args": [
+                            "${CLAUDE_PROJECT_DIR}/tools/update.py",
+                            "--check",
+                            "--max-age",
+                            "86400"
+                        ],
+                        "timeout": 60,
+                        "statusMessage": "Checking whether the kit has a newer version"
                     }
                 ]
             }

@@ -8,6 +8,45 @@
 > decision IS the content here. This is the one place "why we chose X over Y" is kept — everywhere
 > else states only the current chosen state and links here for the why.
 
+## 2026-08-24 — An update replaces the kit's paths; it never merges
+
+**Chosen:** `.engine-manifest.yml` declares every path as the kit's or the person's, and
+`tools/update.py` checks out only the kit's from the `harness-kit` remote. Paths the kit dropped
+are listed as `retired:` and deleted from every base on every update. Written in python rather than
+shell.
+
+**Alternatives considered:** merging from an upstream remote; a `.template`-suffix seed contract
+extracted by a release step; a bash updater mirroring the engine this is modelled on.
+
+**Why:** the people running this will not track the kit's repository and cannot resolve a merge
+overlap in a file they did not write. Replacing a declared set of paths makes an update an ordinary
+save in their own base — revertible, explainable, and unable to conflict. Retirement is the half a
+copy cannot express: the updater copies what the kit HAS, so without it every file the kit ever
+removed sits on every base forever, offering a contract nothing honours. The `.template` suffix and
+its release step exist to extract a public skeleton out of a live private instance; this kit is
+authored public, so its seeds ship pristine under their live names and the whole extraction step is
+unnecessary. Python over shell because the engine it copies had to defend a python-to-bash boundary
+against CRLF-mangled paths and Windows rewriting `<ref>:<path>` — both of which turned a broken
+update into a silent success. Removing the boundary removes the class, and one file runs everywhere
+a shell pair would have to be kept in step.
+
+## 2026-08-24 — Every project carries its own contract, written by the agent
+
+**Chosen:** each project has `AGENTS.md` (the contract), a `CLAUDE.md` importing it, and its own
+`<project>/.claude/knowledge/` and `<project>/.claude/decisions.md`. The agent writes it when the project is born and
+repairs it when it drifts, unasked. It holds only what the code cannot tell you.
+
+**Alternatives considered:** relying on the base's knowledge home for project facts; twin
+CLAUDE.md/AGENTS.md files; asking the person whether they want documentation.
+
+**Why:** a project is opened cold — a phone, a fresh clone, a headless run — with no history to
+lean on. The person will never write this, will not notice it missing, and will not connect a bad
+session to its absence. Keeping project facts in the base instead scatters them away from the code
+they describe and makes them invisible to anyone who has only the project. The import bridge rather
+than twins because Claude Code reads `CLAUDE.md` and other runtimes read `AGENTS.md`, and two
+copies of one contract drift. The what-the-code-cannot-tell-you filter is what keeps the file from
+becoming a stale restatement of the layout, which is worse than nothing because it gets believed.
+
 ## 2026-08-23 — The base is one repository, and everything built lives inside it
 
 **Chosen:** a single repository whose root is the base. `projects/` sits inside it. A project moves

@@ -27,13 +27,25 @@ relevant flow fixes what it surfaces.
 5. **Sessions catch up on their own.** `.claude/settings.json` runs `tools/sync.py` at session
    start, and `python3` is available to run it. Missing either is a WARN, not a FAIL — the canon
    still requires you to do it by hand.
-6. **Indexes present.** `knowledge/_index.md`, `activities/_index.md`, `tools/_index.md`,
+6. **Every project has a contract.** Each directory under `projects/` has `AGENTS.md`, a
+   `CLAUDE.md` importing it, and its own `.claude/`. A project without one is a WARN naming it —
+   the next session that opens it starts blind (`doctrine/project-home.md`). Each is also a row in
+   `projects/_index.md`; a project missing from the index is the same WARN.
+7. **The kit half can still be updated.** `.engine-manifest.yml` and `VERSION` exist, the
+   `harness-kit` remote is configured, and `version:` in the manifest matches `VERSION` and
+   `.claude-plugin/plugin.json`. A base with no kit remote can never receive a fix — FAIL. A
+   version mismatch between the three is a FAIL: the updater's own post-condition will refuse the
+   next update.
+8. **Nothing personal sits in a kit path.** Spot-check the paths the manifest lists under
+   `engine:` for anything the person or their agent wrote — it survives exactly until the next
+   update (`doctrine/kit-ownership.md`). Any find is a FAIL naming the file and its real home.
+9. **Indexes present.** `knowledge/_index.md`, `activities/_index.md`, `tools/_index.md`,
    `projects/_index.md` exist and parse.
-7. **MCP wrapped.** Every local MCP server (Docker / npx / native) in the agent's MCP config routes
+10. **MCP wrapped.** Every local MCP server (Docker / npx / native) in the agent's MCP config routes
    through `tools/mcp-wrapper.js`. An unwrapped local server is a FAIL
    (`doctrine/tool-vs-instrument.md`). Remote / SSE / URL servers are exempt.
-8. **Profile ready.** `profile.md` exists and has a `Language:` value.
-9. **No drift.** Anything the canon requires but the base lacks (a rule file missing, a dead
+11. **Profile ready.** `profile.md` exists and has a `Language:` value.
+12. **No drift.** Anything the canon requires but the base lacks (a rule file missing, a dead
    pointer, a person's fact sitting in a kit-owned path — `doctrine/kit-ownership.md`) → WARN with
    the specific gap.
 

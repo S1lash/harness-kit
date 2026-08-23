@@ -10,8 +10,9 @@ survives sessions, and a concierge stance — built in from the first minute.
 - Solo, cross-agent (Claude Code / Codex / Cursor), domain-agnostic.
 - One base that follows you — the same thing on your computer, in your terminal, and on your
   phone. Keeping those in step is the agent's job, not yours.
-- Yours from the clone on. The kit half stays updatable; everything you and your agent write is
-  never touched by an update (`doctrine/kit-ownership.md`).
+- Yours from the clone on. The kit half stays updatable — `/harness-update` replaces it and
+  drops what the kit retired — and everything you and your agent write is never touched
+  (`.engine-manifest.yml` draws the line).
 - The structure is for the *agent*. You never file, sort, or organize anything.
 
 ---
@@ -78,7 +79,7 @@ you follow it whether or not the session-start hook ran.
 | Path | What it is |
 |---|---|
 | `rules/` | The canon — 13 hard-rule files, loaded hot every session. Your standard. |
-| `doctrine/` | On-demand authoring meta — deep-knowledge, edit-checklist, skill-creation gate, knowledge/activities discipline, tool-vs-instrument, kit-vs-person ownership. |
+| `doctrine/` | On-demand authoring meta — deep-knowledge, edit-checklist, skill-creation gate, knowledge/activities discipline, tool-vs-instrument, kit-vs-person ownership, the contract every project carries. |
 | `knowledge/` | Durable understanding. Ships empty with the routing & growth discipline. |
 | `activities/` | Work that survives sessions. Agent-maintained index + strict anti-bias rule. |
 | `projects/` | The things you build — **inside** the base, so they travel with it. Agent-maintained index. |

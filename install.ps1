@@ -383,6 +383,8 @@ Check "Claude entry (CLAUDE.md) present" (Test-Path (Join-Path $Dest "CLAUDE.md"
 Check "projects/ inside the base" (Test-Path $Projects)
 Check "projects index present" (Test-Path (Join-Path $Dest "projects/_index.md"))
 Check "keeping-in-step tool present" (Test-Path (Join-Path $Dest "tools/sync.py"))
+Check "kit updater present" (Test-Path (Join-Path $Dest "tools/update.py"))
+Check "kit/person path contract present" (Test-Path (Join-Path $Dest ".engine-manifest.yml"))
 Check "sessions start by catching up" (Test-Path (Join-Path $Dest ".claude/settings.json"))
 Check "python3 available (needed to catch up automatically)" ([bool](Get-Command python3 -ErrorAction SilentlyContinue))
 if ($GitOn) { Check "your base has a private place online" ([bool](git -C $Dest remote get-url origin 2>$null)) }

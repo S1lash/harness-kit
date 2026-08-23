@@ -16,6 +16,15 @@ _(none yet — a row per project as they appear)_
 | `<name>/` | one line | its own repository — <url> |
 -->
 
+## Every project has a contract
+
+Each project carries `AGENTS.md` at its root — what it is, why it exists, how to run it, and the
+traps — with a `CLAUDE.md` beside it importing it, and its own `<project>/.claude/knowledge/` and
+`<project>/.claude/decisions.md`. It is written when the project is born and repaired when it goes stale;
+the person never asks for it (`rules/harness-stewardship.md`, `doctrine/project-home.md`).
+
+A project here without one is a defect to fix on the next visit, not a style preference.
+
 ## Where a project lives
 
 **Default: inside this base**, as `projects/<name>/`. One repository means one thing to keep in

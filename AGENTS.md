@@ -34,7 +34,8 @@ These are HARD RULES, loaded every session. They bind you in every action:
 
 Deeper how-to (read on demand, not every session): `doctrine/` — authoring for agents,
 knowledge discipline, skill creation, the deep-knowledge pattern, tool-vs-instrument,
-the harness-edit checklist, and what the kit owns versus what the person owns.
+the harness-edit checklist, what the kit owns versus what the person owns, and the contract
+every project carries.
 
 ## The hot-orientation contract
 

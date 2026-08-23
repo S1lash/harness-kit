@@ -28,6 +28,32 @@ side by side:
   `charset=utf-8` or non-ASCII text reaches the reader as mojibake. Three traps that cost a rebuild
   each time they are met fresh.
 
+## 2026-08-24
+
+The kit can now reach the people running it, and a project can be opened cold.
+
+- Add `.engine-manifest.yml` — the source of truth for which paths belong to the kit and which
+  belong to the person, in four categories: `engine:` (replaced by an update), `template:` (seeded
+  once, never touched again), `exclude:` (the person's, and the default for anything unlisted), and
+  `retired:` (deleted from every base on every update). `doctrine/kit-ownership.md` keeps the
+  judgement and no longer restates the lists.
+- Add `tools/update.py` + `/harness-update`: an update REPLACES the kit's paths rather than merging
+  them, so nobody resolves an overlap in a file they did not write. It refuses to report success
+  when it resolved nothing or when `VERSION` did not land — a broken update and an up-to-date base
+  are otherwise indistinguishable — and `--self-heal` restores the updater from the remote before
+  trusting it, since the updater ships through the update it performs. A version check runs at most
+  once a day at session start.
+- `retired:` carries its first three entries: the commands that moved to `.claude/commands/`. A
+  removal that is not retired never propagates, because the updater copies what the kit HAS and
+  cannot express what it no longer has.
+- Add `VERSION`, mirrored by `version:` in the manifest and `.claude-plugin/plugin.json`.
+- Add `doctrine/project-home.md` and its hot trigger in `rules/harness-stewardship.md`: every
+  project carries `AGENTS.md` with a `CLAUDE.md` importing it, plus its own `<project>/.claude/knowledge/`
+  and `<project>/.claude/decisions.md`. Written when the project is born, repaired when it goes stale, and
+  never containing what the code itself already says. `/harness-project-init` writes or repairs one.
+  The person is never asked for it: they will not notice it missing, and a cold session pays for
+  its absence every time.
+
 ## 2026-08-23
 
 One base, working the same from a computer, a phone, and an agent running on a server. The pieces

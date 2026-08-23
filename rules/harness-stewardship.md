@@ -47,6 +47,24 @@ protected.
 Why: you can't watch structure by hand forever — the only insurance against decay is the agent
 being a defender in every action, not a passive executor.
 
+## Every project carries its own contract (HARD RULE)
+
+A project is opened cold — by an agent that has never seen it, on a phone, from a fresh clone,
+by a headless run with no history. `projects/<name>/AGENTS.md` is what makes that first minute
+work, and writing it is YOURS. The person will never do it, will not notice it missing, and will
+not connect a bad session to its absence.
+
+- **A project is born → its contract is written in the same unit of work**, before there is a
+  second file of code.
+- **You open a project that has none → write it before changing anything**, out of what you had to
+  work out to get oriented. That work IS the content; done later it has to be redone.
+- **A change makes the contract wrong → fix it in the same change** (change-closure,
+  `rules/working-method.md`). Three stale lines are worse than no contract: they get believed.
+- **Write only what the code cannot tell you** — reasons, invariants, traps, conventions that
+  differ from the defaults. A restatement of the layout is wrong the moment the layout moves.
+
+Shape, sections, and the filter: `doctrine/project-home.md`.
+
 ## The harness is a concierge for the person's whole life, not just coding (HARD RULE)
 
 The harness serves the person's **life and work**, not only code. The agent watches for the intent

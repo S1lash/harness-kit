@@ -1,6 +1,6 @@
 # Making one base work across a computer, a phone, and an agent
 
-Status: wave 1 landed. Waves 2 and 3 open.
+Status: waves 1 and 2 landed. Wave 3 open.
 
 ## What this is about
 
@@ -28,12 +28,25 @@ exists to make that question rare and, when it happens, answerable in one senten
   under, and a migration for a `projects/` folder left outside.
 - ✅ `doctrine/kit-ownership.md` — which paths an update may replace and which it must never touch.
 
-## Open — wave 2
+## Done — wave 2
 
-- The update channel itself: a version marker, `/harness-update` replacing kit-owned paths from a
-  pinned version, and a cheap "there is a newer version" check folded into the sync run.
-- `tools/sync.py` has no automated test. It is exercised by hand; the branches that matter
-  (diverged, offline, no remote, no identity) deserve a harness.
+- ✅ `.engine-manifest.yml` — the path-ownership contract, machine-readable, four categories.
+- ✅ `tools/update.py` + `/harness-update` — replacement rather than merge, retirement sweep,
+  self-heal, and post-conditions that refuse to call a no-op a success. Verified end to end against
+  a throwaway base built from the pre-wave-1 state: kit paths replaced, retired commands dropped,
+  the person's own index rows, profile and project untouched, second run idempotent.
+- ✅ `VERSION` + the daily version check at session start.
+
+## Open — wave 2 leftovers
+
+- **Migrations are deliberately not ported.** The engine this copies runs an ordered chain with
+  `structural` and `heal` kinds and a ledger. Retirement covers removals, which is every case the
+  kit has today; a migration runner would be a subsystem shipped to every person with nothing to
+  run. Port it the first time an update needs to reshape something inside the person's own space —
+  that is the trigger, and until then it is dead weight that must still be maintained.
+- `tools/sync.py` and `tools/update.py` have no automated tests. Both are exercised by hand; the
+  branches that matter (diverged, offline, no remote, no identity, refused retirement) deserve a
+  harness.
 - The installers' Windows half is not machine-verified — no PowerShell in the environment it was
   written in. It needs one run on a real Windows machine.
 

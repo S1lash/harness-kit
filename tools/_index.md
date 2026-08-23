@@ -10,6 +10,7 @@
 | Tool | What it does | Invoke |
 |---|---|---|
 | `mcp-wrapper.js` | Wraps a local MCP server so it can't leave zombie processes on exit. | `node tools/mcp-wrapper.js <command> <args…>` (in MCP config) |
+| `update.py` | Brings the kit half of this base up to the version the kit ships: replaces kit paths, drops what the kit retired, never touches what the person wrote. | `python3 tools/update.py [--dry-run\|--check\|--self-heal]` |
 | `sync.py` | Reports what state the base is in across the person's devices and takes the safe action for it. Never forces, never discards a side. | `python3 tools/sync.py status\|session-start\|pull\|save "<why>"` |
 
 _(grows as the person adds scripts / CLIs. Each new tool → a row here. Skills lean on these

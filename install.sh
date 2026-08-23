@@ -427,6 +427,8 @@ check() { # check "label" 0|1
 [ -d "$PROJECTS" ] && check "projects/ inside the base" 0 || check "projects/ inside the base" 1
 [ -f "$DEST/projects/_index.md" ] && check "projects index present" 0 || check "projects index present" 1
 [ -f "$DEST/tools/sync.py" ] && check "keeping-in-step tool present" 0 || check "keeping-in-step tool present" 1
+[ -f "$DEST/tools/update.py" ] && check "kit updater present" 0 || check "kit updater present" 1
+[ -f "$DEST/.engine-manifest.yml" ] && check "kit/person path contract present" 0 || check "kit/person path contract present" 1
 [ -f "$DEST/.claude/settings.json" ] && check "sessions start by catching up" 0 || check "sessions start by catching up" 1
 if [ "$GIT_ON" -eq 1 ]; then
   if [ -n "$(git -C "$DEST" remote get-url origin 2>/dev/null || true)" ]; then
