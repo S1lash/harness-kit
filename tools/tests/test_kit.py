@@ -673,6 +673,93 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertEqual(self.failures, [])
 
 
+class ReleaseGateWiringTests(unittest.TestCase):
+    """The gate as an author actually runs it — a check that exists but is not wired runs never."""
+
+    GATE_MANIFEST = """version: 1.0.0
+
+kit_remote: https://example.invalid/kit
+
+engine:
+  - rules/
+  - VERSION
+  - AGENTS.md
+  - CLAUDE.md
+  - .engine-manifest.yml
+  - .claude-plugin/
+  - tools/check_kit.py
+  - tools/update.py
+  - tools/lib/
+
+template:
+  - seed.md
+
+exclude: []
+
+migrations: []
+
+retired: []
+"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.addCleanup(self.tmp.cleanup)
+        write(self.root, ".engine-manifest.yml", self.GATE_MANIFEST)
+        write(self.root, "VERSION", "1.0.0\n")
+        write(self.root, ".claude-plugin/plugin.json", '{"version": "1.0.0"}\n')
+        write(self.root, "rules/canon.md", "the rule\n")
+        write(self.root, "AGENTS.md", "canon:\n@rules/canon.md\n")
+        write(self.root, "CLAUDE.md", "@AGENTS.md\n")
+        write(self.root, "seed.md", "as released\n")
+        install_tools(self.root)
+        git(self.root, "init", "-q", "-b", "main")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "release 1.0.0")
+
+    def gate(self, *args):
+        return subprocess.run(
+            [sys.executable, str(self.root / "tools" / "check_kit.py"), *args],
+            capture_output=True, text=True, cwd=str(self.root))
+
+    def test_a_coherent_kit_passes(self):
+        done = self.gate("--authoring")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+
+    def test_editing_a_seed_that_already_shipped_fails_the_release(self):
+        write(self.root, "seed.md", "edited after the release\n")
+        done = self.gate("--authoring")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("seed", done.stderr)
+
+    def test_the_kits_own_notes_in_the_persons_space_fail_the_release(self):
+        write(self.root, ".engine-manifest.yml",
+              self.GATE_MANIFEST.replace("exclude: []", "exclude:\n  - notes/"))
+        write(self.root, "notes/my-work-log.md", "the author's own notes\n")
+        git(self.root, "add", "-A")
+        done = self.gate("--authoring")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("my-work-log.md", done.stderr)
+
+    def test_a_migration_into_the_kits_own_space_fails_the_release(self):
+        write(self.root, ".engine-manifest.yml",
+              self.GATE_MANIFEST.replace("migrations: []",
+                                         "migrations:\n  - move rules -> elsewhere"))
+        done = self.gate("--authoring")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("kit's own space", done.stderr)
+
+    def test_the_structural_half_stays_quiet_about_a_persons_own_files(self):
+        # A person's base runs this half through /harness-doctor, where their own knowledge and
+        # activities are exactly what is supposed to be there.
+        write(self.root, ".engine-manifest.yml",
+              self.GATE_MANIFEST.replace("exclude: []", "exclude:\n  - notes/"))
+        write(self.root, "notes/their-thinking.md", "theirs\n")
+        git(self.root, "add", "-A")
+        done = self.gate()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+
+
 class WindowsInstallerTests(unittest.TestCase):
     """Static checks on install.ps1 — no PowerShell here, so these guard what a read can prove.
 
