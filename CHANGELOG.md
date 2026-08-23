@@ -30,6 +30,29 @@ side by side:
 
 ## 2026-08-23
 
+Two things the kit could not do, and the gates that keep them from coming back:
+
+- **`migrations:` — a change replacement cannot express.** A path in the person's own space that has
+  to move is now declared as manifest data, carried after the checkout, idempotent so every base
+  converges from any version, and refused outright if it reaches into the kit's own space or would
+  land on something the person already has. A verb an older updater does not know stops the run
+  instead of being skipped. Alongside it: the kit's own address is reconciled from the manifest on
+  every update, so moving the kit is staged a release ahead rather than breaking the only channel
+  that could repair it; and global agent wiring that no longer names the base is reported.
+- **Seeds are thin, and the freeze is now visible at authoring time.** A `template:` file is created
+  when missing but never rewritten, so its kit-maintained half was frozen at each person's clone
+  date — silently. Every index seed now carries only the person's own rows plus one pointer, with
+  the kit's half moved into engine files (`tools/_kit.md` is the first), and
+  `check_kit.py --authoring` fails a release that edits a seed which already shipped.
+- **The kit ships its own person-space pristine.** There is no extraction step — a clone carries the
+  whole repository — so the kit's own working notes under `activities/` would have landed in every
+  base as though the person had written them. They are gone, `KNOWN-LIMITS.md` carries what they
+  said, and a gate fails any release that puts them back.
+- The suite is at 65 tests, every one mutation-checked. That found two gates that were tested as
+  functions but never as wired, so the gate is now also exercised end to end the way an author runs
+  it.
+
+
 What four independent audits and a first real run of the installers found, and what closed:
 
 - **The Windows installer could not have worked.** Native `git` output aborted it under a

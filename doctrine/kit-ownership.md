@@ -17,6 +17,11 @@ The manifest's own header defines them precisely. What they oblige you to do:
   Adding one to `engine:` instead is how a person loses their own index.
 - **exclude** — the person's space, listed for readability. **The default for a path named nowhere
   is already "the person's"** — a path is the kit's only by being listed.
+- **migrations** — a change replacement cannot express: a path in the PERSON's space that has to
+  move. Declared as data because the updater replaces itself mid-run, so its own new code would
+  take effect an update late while a declaration is re-read from disk in the same run. Each is
+  idempotent and re-runs on every update, so a base at any version converges with no ledger.
+  A verb an older updater does not know stops the run rather than being skipped.
 - **retired** — what the kit dropped. Every update deletes these from every base. Adding a path
   here is how a removal actually reaches the people running it.
 
@@ -35,6 +40,11 @@ The manifest's own header defines them precisely. What they oblige you to do:
   creates one that is missing but never rewrites one that exists — that is what keeps their rows
   safe, and the price is that the kit half cannot change afterwards. Keep it to what will not need
   to; put anything that will into an engine file the template links to.
+- **Move something in the person's space → declare it under `migrations:`, never do it in code.**
+  A move is refused outright if either side is the kit's own space, or if it would land on
+  something the person already has. What it cannot do is reshape content INSIDE their files —
+  that is their writing, and a kit change needing it is the trigger to design that verb, not to
+  improvise one (`KNOWN-LIMITS.md`).
 - **Remove a kit path → list it under `retired:` in the same change.** A removal that is not
   retired never propagates: the updater copies what the kit HAS and cannot express what it no
   longer has, so the file sits on every base forever, offering a contract nothing honours.
@@ -47,6 +57,10 @@ The manifest's own header defines them precisely. What they oblige you to do:
   `.claude/settings.local.json` are the person's and are never touched. Author a capability for
   this person under `.claude/skills/` — putting it in `.claude/commands/` loses it at the next
   update, silently.
+- **Moving the kit itself is staged, never sudden.** Publish the new `kit_remote:` one release
+  BEFORE the move: every update reconciles the remote to what the manifest declares, so by the
+  time the old address stops answering, every base is already pointed at the new one. Move first
+  and the repair ships only through the channel that is broken.
 - **The kit's remote is `harness-kit`, never `origin`.** `origin` is the person's private copy of
   their base. A base set up from the kit keeps both, so an update has somewhere to come from and a
   save has somewhere to go, with no way to confuse the two.

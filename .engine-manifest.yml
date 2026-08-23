@@ -23,6 +23,10 @@
 #               an engine file the template links to.
 #   exclude   — person space, listed for readability. The default for any path
 #               named in no section at all is already "the person's".
+#   migrations— changes replacement cannot express: a path in the PERSON's space
+#               that has to move. Read after the checkout so a declaration lands
+#               in the run it ships in; idempotent, so every base converges
+#               whatever version it starts from.
 #   retired   — paths the kit no longer owns. Every update DELETES them from
 #               the base, so a removal actually reaches the people running it.
 #               Without this a removal never propagates: the updater copies

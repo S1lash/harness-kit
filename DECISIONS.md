@@ -37,12 +37,11 @@ shell.
 **Alternatives considered:** merging from an upstream remote; a `.template`-suffix seed contract
 extracted by a release step; a bash updater mirroring the engine this is modelled on.
 
-**Caveat, stated because it is not small:** replacement plus retirement cannot express
-everything. A `template:` file's kit-maintained half is frozen at the person's clone date; a
-rename inside the person's own space cannot be carried to them; and the kit's remote, its release
-branch, and the global agent wiring live outside the tracked tree where neither mechanism reaches.
-Until a migration channel exists, the kit must not change any of those — and a change that needs
-one is the trigger to build it.
+**What replacement and retirement still cannot express, and what carries it instead:** a path in
+the person's space that must move is declared under `migrations:`; the kit's own address is
+reconciled from the manifest on every update, so moving the kit is staged rather than sudden; and
+global agent wiring is detected and reported. What remains genuinely out of reach is content
+INSIDE the person's files, and the frozen kit-half of a seed — both in `KNOWN-LIMITS.md`.
 
 **Why:** the people running this will not track the kit's repository and cannot resolve a merge
 overlap in a file they did not write. Replacing a declared set of paths makes an update an ordinary
@@ -55,6 +54,27 @@ unnecessary. Python over shell because the engine it copies had to defend a pyth
 against CRLF-mangled paths and Windows rewriting `<ref>:<path>` — both of which turned a broken
 update into a silent success. Removing the boundary removes the class, and one file runs everywhere
 a shell pair would have to be kept in step.
+
+## 2026-08-23 — Migrations are declared data, convergent, and have one verb
+
+**Chosen:** a `migrations:` section in the manifest, currently one verb — `move <from> -> <to>`,
+optionally carrying a note for the person. It runs after the checkout on every update, is
+idempotent by construction, and refuses a verb it does not recognise. No ordered chain, no ledger.
+Alongside it, two reconciliations that are not migrations at all: the kit's remote is set to the
+address the manifest publishes, and stale global agent wiring is reported.
+
+**Alternatives considered:** the ordered chain with `structural`/`heal` kinds and a ledger that the
+engine this kit is modelled on uses; putting the logic in `update.py` as code; doing nothing and
+forbidding the kit from ever moving anything in the person's space.
+
+**Why:** the updater replaces itself mid-run while its old copy is already in memory, so code added
+to it takes effect one update late — the manifest is re-read from disk after the checkout, so data
+lands in the same run it ships in. A ledger needs a valid starting point that a base cloned long
+ago has never had, and an ordered chain is strictly worse for a base that has been dark for a year;
+re-running idempotent declarations converges from any version. One verb because a move is the case
+that actually exists, and refusing an unknown verb rather than skipping it means a kit that adds a
+second one never silently believes a change landed. Doing nothing was the previous position, and it
+made "the kit must never rename anything a person owns" a permanent constraint rather than a choice.
 
 ## 2026-08-23 — Every project carries its own contract, written by the agent
 
