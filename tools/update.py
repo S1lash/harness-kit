@@ -28,10 +28,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+if hasattr(signal, "SIGPIPE"):
+    # Piping this into `head` closes the pipe early. That is the reader's
+    # business, not a failure of the update — die quietly rather than dumping a
+    # traceback over a report the person is reading.
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -196,7 +203,9 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
         for relpath in engine_paths:
             if not ref_has_path(ref, relpath, root):
                 continue
-            stat = git_ok("diff", "--stat", ref, "--", relpath, root=root)
+            # `-R` reverses the direction: without it this reads ref -> here,
+            # so everything the update ADDS renders as a deletion.
+            stat = git_ok("diff", "--stat", "-R", ref, "--", relpath, root=root)
             print("  - %s%s" % (relpath, "" if not stat else "\n      " + stat.replace("\n", "\n      ")))
         removed = retire_lib.run(root, dry_run=True)
         for relpath in removed:
@@ -205,13 +214,15 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
                                                           version_upstream or "?"))
         return 0
 
-    resolved, absent = 0, 0
+    resolved, absent, changed = 0, 0, 0
     for relpath in engine_paths:
-        if ref_has_path(ref, relpath, root):
-            git("checkout", ref, "--", relpath, root=root)
-            resolved += 1
-        else:
+        if not ref_has_path(ref, relpath, root):
             absent += 1
+            continue
+        if git("diff", "--quiet", ref, "--", relpath, root=root)[0] != 0:
+            changed += 1
+        git("checkout", ref, "--", relpath, root=root)
+        resolved += 1
 
     # A run that resolves nothing is a broken update, not an up-to-date base, and
     # the two are indistinguishable without this check — which is exactly how an
@@ -242,15 +253,19 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
             "inspect with: git status",
         )
 
-    print("%s %d kit path(s) replaced, %d absent, %d dropped — %s -> %s"
-          % (PREFIX, resolved, absent, len(removed), version_before or "?",
+    print("%s %d kit path(s) checked, %d changed, %d absent, %d dropped — %s -> %s"
+          % (PREFIX, resolved, changed, absent, len(removed), version_before or "?",
              version_after or "?"))
     for relpath in removed:
         print("  - dropped %s" % relpath)
+    if not changed and not removed:
+        print("YOU MUST: nothing arrived — the base was already current. Say so in one short "
+              "line only if the person asked; otherwise say nothing.")
+        return 0
     print("YOU MUST: read CHANGELOG.md for what landed between those two versions, tell the "
-          "person in one or two plain sentences what it means for them, and save "
-          "(python3 tools/sync.py save \"...\"). If nothing in it affects them, say so and "
-          "save anyway.")
+          "person in one or two plain sentences what it means for THEM — not what changed in "
+          "the kit — and save (python3 tools/sync.py save \"...\"). If none of it touches how "
+          "they work, say that plainly and save anyway.")
     return 0
 
 
