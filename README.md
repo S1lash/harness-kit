@@ -22,7 +22,12 @@ survives sessions, and a concierge stance — built in from the first minute.
 1. **Clone it into a folder you name** — pick a place and a name you'll recognize; you'll
    launch your AI agent from there.
    ```bash
-   git clone <this-repo-url> my-base    # name it whatever you like
+   git clone <this-repo-url> harness    # name it whatever you like
+   ```
+   On Windows, open a terminal first and run it from there — so the window stays open and you
+   can read what it says:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\install.ps1
    ```
 2. **Tell your agent: "install this."** It asks a few plain questions — where, your
    language, which agents you use — sets up the one private place your base lives online, and

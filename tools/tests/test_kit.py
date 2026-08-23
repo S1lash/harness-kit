@@ -198,6 +198,16 @@ class UpdateEndToEndTests(unittest.TestCase):
         self.assertTrue((self.base / "mine/notes.md").exists())
         self.assertFalse((self.base / "old").exists(), "a retired path must be dropped")
 
+    def test_a_seed_added_after_their_clone_still_reaches_them(self):
+        # The gap this closes: templates never sync, so a seed introduced after somebody cloned
+        # reached them never — while the canon arriving in the same update named it as if it
+        # were there. Absent is created; present is left exactly alone.
+        (self.base / "seed.md").unlink()
+        done = run_update(self.base)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual((self.base / "seed.md").read_text(), "pristine seed\n")
+        self.assertIn("a seed this base never received", done.stdout)
+
     def test_a_second_run_changes_nothing_and_says_so(self):
         run_update(self.base)
         git(self.base, "add", "-A")

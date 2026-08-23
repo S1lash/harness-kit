@@ -13,8 +13,14 @@
 #               survive exactly until the next update.
 #   template  — seed files. They ship under their live names, the person's
 #               agent fills them as they work, and an update NEVER touches
-#               them again. A file that carries both a spec the kit maintains
-#               and rows the person accumulates belongs here, not in engine.
+#               them again — though one MISSING from a base is created, so a
+#               seed added after somebody's clone still reaches them.
+#               A file that carries both a spec the kit maintains and rows the
+#               person accumulates belongs here, not in engine — and its
+#               kit-maintained half is then FROZEN at their clone date, which
+#               is the price of never overwriting their rows. Keep that half to
+#               what will not need to change, and put anything that will into
+#               an engine file the template links to.
 #   exclude   — person space, listed for readability. The default for any path
 #               named in no section at all is already "the person's".
 #   retired   — paths the kit no longer owns. Every update DELETES them from
@@ -84,6 +90,7 @@ engine:
   # The kit describing itself
   - README.md
   - CHANGELOG.md
+  - DECISIONS.md
   - LICENSE
   - VERSION
   - .engine-manifest.yml

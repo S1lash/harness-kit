@@ -30,6 +30,38 @@ side by side:
 
 ## 2026-08-23
 
+What four independent audits and a first real run of the installers found, and what closed:
+
+- **The Windows installer could not have worked.** Native `git` output aborted it under a
+  stop-on-error preference; file reads decoded through the ANSI code page and written back as
+  mojibake corrupted `profile.md`; and the script's own non-ASCII literals were mis-parsed for want
+  of a byte-order mark. Also fixed: `Remove-Item` on a directory symlink could take the canon with
+  it, a dangling link was never repaired, a merge copy nested `rules/rules`, paths resolved against
+  the wrong directory, an empty username silently skipped the git identity, and the `python3` check
+  was wrong in both directions. Seven static tests now stand in for the interpreter this
+  environment does not have.
+- **Both installers refuse a run nobody can answer.** With no interactive terminal every prompt
+  took its default and the script still printed "your base is ready" — output indistinguishable
+  from a real install. Supplying answers now has to be declared.
+- **The shell installer, run for the first time**, left the base on `master` with no commit: pushed
+  to a repository whose default is `main`, that is two branches, and a phone cloning the default
+  one finds nothing. It now starts on `main` with one commit and a clean tree.
+- **A seed added after somebody cloned reached them never**, while the canon arriving in the same
+  update named it as though it were there — `projects/_index.md` is a live instance. A template
+  that is missing is now created; one that exists is still never touched.
+- **Putting two sides together never worked at all**: the merge passed `--no-rebase`, a `git pull`
+  flag, so git printed its usage and failed. Two different bases pointed at one place are now named
+  as that rather than reported as a file conflict.
+- **The kit's own address is repo content now.** It was only ever in one machine's git config, so a
+  phone told to "reconnect the kit remote" had nothing to reconnect to. It also stops an installer
+  from stripping the origin of anyone whose own repository is called harness-kit.
+- **The kit's own decisions moved to `DECISIONS.md`.** They were sitting in the person's
+  `knowledge/decisions.md` — kit content in a person's path, frozen at their clone date, which is
+  the thing `doctrine/kit-ownership.md` forbids.
+- An update now names every path it replaced, added or dropped rather than counting them; `sync.py`
+  reports a base carrying more than one branch; `/harness-update` says when re-wiring is needed.
+
+
 One base, working the same from a computer, a phone, and an agent running on a server. The pieces
 that made those three diverge silently, closed together:
 

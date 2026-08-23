@@ -27,7 +27,11 @@ only the first kind. The result is one ordinary save in their base, revertible l
 4. **Say what it means for THEM.** Read `CHANGELOG.md` between the two versions and give
    one or two plain sentences about what changes in how they work — not a list of what
    changed in the kit. Nothing that touches them → say exactly that.
-5. **Save** — `python3 tools/sync.py save "<why>"`, so the update reaches their other
+5. **Re-wire only if the wiring itself changed.** Adding a rule never needs it — every global
+   entry points at `AGENTS.md` and picks up the list from there. A NEW agent runtime in the
+   changelog does: re-run the installer for that runtime, or wire it by hand
+   (`rules/multi-agent.md`).
+6. **Save** — `python3 tools/sync.py save "<why>"`, so the update reaches their other
    devices too.
 
 ## A base older than the updater

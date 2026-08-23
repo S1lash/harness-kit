@@ -29,7 +29,12 @@ The manifest's own header defines them precisely. What they oblige you to do:
   file inside the kit half is `profile.md`, and it is a `template:` precisely so an update cannot
   reach it.
 - **Never put kit content in a person path.** A copy of a rule under `knowledge/` is a second
-  source of truth that no update will ever correct.
+  source of truth that no update will ever correct. This is why the kit's own decisions live in
+  `DECISIONS.md` and the person's in `knowledge/decisions.md`: same genre, two owners, two files.
+- **A `template:` file's kit-maintained half is frozen at the person's clone date.** An update
+  creates one that is missing but never rewrites one that exists — that is what keeps their rows
+  safe, and the price is that the kit half cannot change afterwards. Keep it to what will not need
+  to; put anything that will into an engine file the template links to.
 - **Remove a kit path → list it under `retired:` in the same change.** A removal that is not
   retired never propagates: the updater copies what the kit HAS and cannot express what it no
   longer has, so the file sits on every base forever, offering a contract nothing honours.

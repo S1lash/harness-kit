@@ -53,9 +53,27 @@ exists to make that question rare and, when it happens, answerable in one senten
   and the suite had to catch it. That found the one test guarding a real past bug testing the wrong
   shape of it — it passed against the very mutation it existed to stop, and now does not.
 
+## Verified by audit, not only by hand
+
+Four independent reviews (two on the Windows installer, one adversarial probe of the no-migrations
+decision, one cold-start walkthrough) plus the first real execution of `install.sh`. Everything they
+found that could be closed, was; the rest is below. The suite is at 45 tests, each mutation-checked.
+
 ## Open
 
-- **Migrations are deliberately not ported.** The engine this copies runs an ordered chain with
+
+- **`install.ps1` is fixed but still never executed.** No PowerShell in the environment it was
+  written in. Seven static tests guard what a read can prove — BOM, encoding, native-call routing,
+  prompt and doctor parity — but nothing here can prove it runs. One run on a real Windows machine
+  remains the outstanding item.
+- **A template's kit-maintained half is frozen at the person's clone date.** `tools/_index.md`
+  carries kit rows that no update can refresh. Either those rows move to an engine file the
+  template links to, or the constraint stays and the rows must never need to change.
+- **Migrations are deliberately not ported** — and the caveat is now stated in `DECISIONS.md`
+  rather than implied: replacement plus retirement cannot express a template's frozen half, a
+  rename inside the person's own space, or anything outside the tracked tree (the kit's own
+  remote, its release branch, the global agent wiring). Until a channel exists the kit must not
+  change any of those. The engine this copies runs an ordered chain with
   `structural` and `heal` kinds and a ledger. Retirement covers removals, which is every case the
   kit has today; a migration runner would be a subsystem shipped to every person with nothing to
   run. Port it the first time an update needs to reshape something inside the person's own space —
