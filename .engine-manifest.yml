@@ -1,0 +1,119 @@
+# What the kit owns, what the person owns — the single source of truth.
+#
+# A base is one repository holding two things at once: the kit (the shared
+# standard, identical in every fork) and the person's own life. Every tool that
+# needs to know which is which reads THIS file: the updater, the health check,
+# and the agent when it is deciding where a fact belongs. The judgement that
+# follows from the split — never write a person's fact into a kit path, never
+# copy kit content into a person path — lives in `doctrine/kit-ownership.md`.
+#
+# Categories:
+#   engine    — the kit. An update REPLACES these wholesale from the kit
+#               remote. Nothing personal is ever written here: it would
+#               survive exactly until the next update.
+#   template  — seed files. They ship under their live names, the person's
+#               agent fills them as they work, and an update NEVER touches
+#               them again. A file that carries both a spec the kit maintains
+#               and rows the person accumulates belongs here, not in engine.
+#   exclude   — person space, listed for readability. The default for any path
+#               named in no section at all is already "the person's".
+#   retired   — paths the kit no longer owns. Every update DELETES them from
+#               the base, so a removal actually reaches the people running it.
+#               Without this a removal never propagates: the updater copies
+#               what the kit HAS and leaves anything it lacks alone, so a
+#               deleted command stays discoverable on every base forever,
+#               offering a contract nothing honours. Guard: a retired path may
+#               not fall under `exclude:` — retiring something the person
+#               produced is not a sweep's decision to make.
+#
+# Path semantics:
+#   - trailing `/` means the whole directory, recursively
+#   - no trailing `/` means one file
+#   - `*/` means the subdirectories of a directory, not the files beside them
+#   - `**` is not supported — list explicit subpaths instead
+#
+# Two deliberate differences from the engine this is modelled on, both because
+# this kit has no private parent to extract from:
+#   - Template files ship under their LIVE names, with no `.template` suffix to
+#     strip: the kit's copies are already pristine, because the kit is authored
+#     as the public thing rather than extracted out of somebody's live instance.
+#   - `version:` below is the kit's version and the only place it is authored.
+#     `.claude-plugin/plugin.json` mirrors it and is updated in the same edit.
+
+version: 0.2.0
+
+engine:
+  # The canon — loaded hot in every session
+  - rules/
+
+  # On-demand authoring meta
+  - doctrine/
+
+  # The kit's own executables and the session wiring
+  - tools/sync.py
+  - tools/update.py
+  - tools/mcp-wrapper.js
+  - tools/lib/
+  - .claude/commands/
+  - .claude/settings.json
+
+  # Installers. `.gitattributes` is engine because it forces LF on shell and
+  # python: a Windows checkout with CRLF breaks bash and python outright.
+  - install.sh
+  - install.ps1
+  - .gitattributes
+  - .gitignore
+
+  # The entry points every runtime reads. `CLAUDE.md` is Claude Code's and
+  # `AGENTS.md` is everyone else's; they are runtime twins, reconciled in the
+  # same edit, and shipping only one leaves a person on the other runtime with
+  # no contract at all.
+  - CLAUDE.md
+  - AGENTS.md
+
+  # The kit describing itself
+  - README.md
+  - CHANGELOG.md
+  - LICENSE
+  - VERSION
+  - .engine-manifest.yml
+  - .claude-plugin/
+
+  # Bundled plugin — the kit maintains it, the person does not edit it
+  - plugins/frontend-crafter/
+
+template:
+  # The one personal file inside the kit half, personal by design. An update
+  # improving its guidance must never overwrite what the person put in it.
+  - profile.md
+
+  # Indexes: the kit ships the shape and the discipline, the person's agent
+  # accumulates the rows. Both halves live in one file on purpose — an agent
+  # reading it needs the rule and the contents together — which is exactly why
+  # it seeds instead of syncing.
+  - knowledge/_index.md
+  - knowledge/decisions.md
+  - activities/_index.md
+  - projects/_index.md
+  - tools/_index.md
+
+exclude:
+  # Everything the person and their agent write
+  - knowledge/
+  - activities/
+  - projects/
+  - pointers/
+  - corrections.jsonl
+
+  # This machine's own settings — carrying them to another device is how two
+  # surfaces start behaving differently (rules/device-sync.md)
+  - .claude/settings.local.json
+
+retired:
+  # The commands moved to `.claude/commands/harness-*.md`, where a fresh clone
+  # finds them with no plugin installed. A base that predates the move keeps
+  # offering `/init`, `/doctor` and `/add-skill` from the old location, reading
+  # a contract that describes a layout the kit no longer has.
+  - commands/init.md
+  - commands/doctor.md
+  - commands/add-skill.md
