@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 
 MANIFEST_NAME = ".engine-manifest.yml"
-LIST_SECTIONS = ("engine", "template", "exclude", "retired")
+LIST_SECTIONS = ("engine", "template", "exclude", "retired", "migrations")
 
 _ENTRY = re.compile(r"^\s*-\s+(.+?)\s*$")
 # YAML ends a scalar at a `#` preceded by whitespace. Miss that and an entry
@@ -61,6 +61,16 @@ def read_version(root: Path | None = None) -> str:
     """The kit version the manifest declares, or an empty string."""
     match = _VERSION.search(manifest_path(root).read_text(encoding="utf-8"))
     return match.group(1).strip() if match else ""
+
+
+def covers(entries, relpath: str) -> bool:
+    """True when any entry covers this path, whether or not it was written as a directory.
+
+    A directory entry carries a trailing slash and the path being classified does not, so asking
+    the raw question misses every directory — which is the shape a guard fails silently in.
+    """
+    shapes = (relpath, relpath.rstrip("/") + "/")
+    return any(covered_by(entry, shape) for entry in entries for shape in shapes)
 
 
 def read_kit_remote(root: Path | None = None) -> str:

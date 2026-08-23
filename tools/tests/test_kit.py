@@ -24,6 +24,7 @@ KIT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(KIT_ROOT / "tools"))
 
 from lib import manifest as manifest_lib  # noqa: E402
+from lib import migrate as migrate_lib  # noqa: E402
 from lib import retire as retire_lib  # noqa: E402
 
 TOOL_FILES = ("update.py", "check_kit.py")
@@ -530,6 +531,146 @@ class InstallerTests(unittest.TestCase):
         self.install()
         wiring = (self.home / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertEqual(wiring.count("BEGIN HARNESS-KIT"), 1)
+
+
+class MigrationTests(unittest.TestCase):
+    """The channel for a change replacement cannot express: a path in the person's space moving."""
+
+    BASE_MANIFEST = MANIFEST
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.addCleanup(self.tmp.cleanup)
+
+    def declare(self, *lines):
+        body = "migrations:\n" + "".join("  - %s\n" % line for line in lines) if lines else "migrations: []\n"
+        write(self.root, ".engine-manifest.yml", self.BASE_MANIFEST + "\n" + body)
+
+    def test_a_declared_move_is_carried_out(self):
+        self.declare("move pointers -> knowledge/pointers")
+        write(self.root, "pointers/stack.md", "theirs\n")
+        carried = migrate_lib.run(self.root)
+        self.assertEqual(len(carried), 1)
+        self.assertFalse((self.root / "pointers").exists())
+        self.assertEqual((self.root / "knowledge/pointers/stack.md").read_text(), "theirs\n")
+
+    def test_running_it_again_does_nothing(self):
+        # Convergence is the whole design: every update re-runs every declaration, so a base at
+        # any version — including one dark for a year — lands in the same place.
+        self.declare("move pointers -> knowledge/pointers")
+        write(self.root, "pointers/stack.md", "theirs\n")
+        migrate_lib.run(self.root)
+        self.assertEqual(migrate_lib.run(self.root), [])
+
+    def test_a_base_that_never_had_the_old_path_is_untouched(self):
+        self.declare("move pointers -> knowledge/pointers")
+        self.assertEqual(migrate_lib.run(self.root), [])
+        self.assertFalse((self.root / "knowledge/pointers").exists())
+
+    def test_it_refuses_to_overwrite_what_the_person_already_has(self):
+        self.declare("move pointers -> knowledge/pointers")
+        write(self.root, "pointers/stack.md", "old\n")
+        write(self.root, "knowledge/pointers/stack.md", "newer, theirs\n")
+        with self.assertRaises(migrate_lib.MigrationRefused):
+            migrate_lib.run(self.root)
+        self.assertEqual((self.root / "knowledge/pointers/stack.md").read_text(), "newer, theirs\n")
+        self.assertTrue((self.root / "pointers/stack.md").exists())
+
+    def test_it_refuses_to_reach_into_the_kits_own_space(self):
+        # Replacement and retirement already own that; a move there is an authoring mistake and
+        # would fight the checkout that runs beside it.
+        self.declare("move rules -> knowledge/rules")
+        write(self.root, "rules/canon.md", "kit\n")
+        with self.assertRaises(migrate_lib.MigrationRefused):
+            migrate_lib.run(self.root)
+        self.assertTrue((self.root / "rules/canon.md").exists())
+
+    def test_a_verb_from_a_newer_kit_stops_the_run(self):
+        # Silently skipping it would leave the kit believing a change landed that never did.
+        self.declare("reshape knowledge/_index.md")
+        with self.assertRaises(migrate_lib.MigrationRefused) as refusal:
+            migrate_lib.run(self.root)
+        self.assertIn("once more", str(refusal.exception))
+
+    def test_a_note_rides_with_the_move(self):
+        self.declare("move pointers -> knowledge/pointers | your own notes may name the old place")
+        write(self.root, "pointers/stack.md", "theirs\n")
+        carried = migrate_lib.run(self.root)
+        self.assertIn("may name the old place", carried[0].note)
+
+    def test_dry_run_moves_nothing(self):
+        self.declare("move pointers -> knowledge/pointers")
+        write(self.root, "pointers/stack.md", "theirs\n")
+        self.assertEqual(len(migrate_lib.run(self.root, dry_run=True)), 1)
+        self.assertTrue((self.root / "pointers/stack.md").exists())
+
+
+class ReleaseGateTests(unittest.TestCase):
+    """The authoring gates, on a repository shaped like the kit."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.addCleanup(self.tmp.cleanup)
+        sys.path.insert(0, str(KIT_ROOT / "tools"))
+        import importlib
+        self.gate = importlib.import_module("check_kit")
+        self.failures = []
+
+    def fail_collector(self, message, why=""):
+        self.failures.append(message)
+
+    def test_an_edited_seed_that_already_shipped_fails_the_release(self):
+        write(self.root, "VERSION", "1.0.0\n")
+        write(self.root, "seed.md", "as released\n")
+        git(self.root, "init", "-q", "-b", "main")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "release")
+        write(self.root, "seed.md", "edited after the release\n")
+        self.gate.check_seeds_unchanged(self.root, ["seed.md"], "main", self.fail_collector)
+        self.assertEqual(len(self.failures), 1)
+        self.assertIn("seed", self.failures[0])
+
+    def test_a_seed_added_since_the_release_is_fine(self):
+        write(self.root, "VERSION", "1.0.0\n")
+        git(self.root, "init", "-q", "-b", "main")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "release")
+        write(self.root, "new-seed.md", "arrived after\n")
+        self.gate.check_seeds_unchanged(self.root, ["new-seed.md"], "main", self.fail_collector)
+        self.assertEqual(self.failures, [], "seeding delivers a seed that is merely new")
+
+    def test_nothing_is_frozen_before_the_first_release(self):
+        write(self.root, "seed.md", "as committed\n")  # no VERSION at the ref
+        git(self.root, "init", "-q", "-b", "main")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "unreleased")
+        write(self.root, "seed.md", "still being written\n")
+        self.gate.check_seeds_unchanged(self.root, ["seed.md"], "main", self.fail_collector)
+        self.assertEqual(self.failures, [])
+
+    def test_the_kits_own_notes_in_the_persons_space_fail_the_release(self):
+        # There is no extraction step: a clone carries the whole repository, so anything the kit's
+        # author left under activities/ or knowledge/ lands in every base as though it were theirs.
+        write(self.root, "activities/_index.md", "the seed\n")
+        write(self.root, "activities/my-work-log.md", "the author's own notes\n")
+        git(self.root, "init", "-q", "-b", "main")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "kit")
+        self.gate.check_person_space_ships_pristine(
+            self.root, ["activities/_index.md"], ["activities/"], self.fail_collector)
+        self.assertEqual(len(self.failures), 1)
+        self.assertIn("my-work-log.md", self.failures[0])
+
+    def test_the_seed_itself_is_allowed_to_ship(self):
+        write(self.root, "activities/_index.md", "the seed\n")
+        git(self.root, "init", "-q", "-b", "main")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "kit")
+        self.gate.check_person_space_ships_pristine(
+            self.root, ["activities/_index.md"], ["activities/"], self.fail_collector)
+        self.assertEqual(self.failures, [])
 
 
 class WindowsInstallerTests(unittest.TestCase):

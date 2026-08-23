@@ -43,6 +43,7 @@ if hasattr(signal, "SIGPIPE"):
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib import manifest as manifest_lib  # noqa: E402
+from lib import migrate as migrate_lib  # noqa: E402
 from lib import retire as retire_lib  # noqa: E402
 
 DEFAULT_REMOTE = "harness-kit"
@@ -169,6 +170,45 @@ def dirty_engine_paths(root: Path, ref: str, engine_paths: list) -> list:
     return dirty
 
 
+def reconcile_kit_remote(root: Path, remote: str) -> str:
+    """Point the kit remote at the address the kit now publishes.
+
+    The remote lives in git config, which no manifest section reaches and no clone carries. If the
+    kit ever moves, a base still pointed at the old address cannot fetch the update that would have
+    told it the new one — the repair ships only through the channel that is broken. Publishing the
+    new address one release BEFORE the move closes that: every base adopts it while the old address
+    still works.
+    """
+    declared = manifest_lib.read_kit_remote(root)
+    current = git_ok("remote", "get-url", remote, root=root)
+    if not declared or not current or declared == current:
+        return ""
+    if git("remote", "set-url", remote, declared, root=root)[0] != 0:
+        return ""
+    return declared
+
+
+def stale_global_wiring(root: Path) -> list:
+    """Global agent config that no longer names this base. Reported, never edited.
+
+    `install.sh` writes a marked block into each runtime's global entry. Nothing re-runs it, so a
+    base that moved, or one wired before the contract became `AGENTS.md`, keeps a block pointing
+    somewhere else — and the canon then reaches that runtime from the wrong place, or not at all.
+    """
+    home = Path.home()
+    expected = "@%s/AGENTS.md" % root
+    stale = []
+    for relpath in (".claude/CLAUDE.md", ".codex/AGENTS.md"):
+        entry = home / relpath
+        try:
+            text = entry.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if "BEGIN HARNESS-KIT" in text and expected not in text and str(root) not in text:
+            stale.append(str(entry))
+    return stale
+
+
 def seed_missing_templates(root: Path, ref: str) -> list:
     """Create the seed files this base never received; never touch one it already has.
 
@@ -231,6 +271,8 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
         for relpath in manifest_lib.read_section("template", root):
             if not (root / relpath).exists() and ref_has_path(ref, relpath, root):
                 print("  + add %s (a seed this base never received)" % relpath)
+        for move in migrate_lib.run(root, dry_run=True):
+            print("  > move %s to %s" % (move.source, move.destination))
         removed = retire_lib.run(root, dry_run=True)
         for relpath in removed:
             print("  - drop %s (the kit no longer has it)" % relpath)
@@ -263,6 +305,13 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
         )
 
     try:
+        carried = migrate_lib.run(root)
+    except migrate_lib.MigrationRefused as refusal:
+        return fail("a declared change could not be carried out: %s" % refusal,
+                    "Nothing was moved. The kit paths above are already in place; running the",
+                    "update again is safe.")
+
+    try:
         removed = retire_lib.run(root)
     except retire_lib.RetirementRefused as refusal:
         return fail(
@@ -280,6 +329,7 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
             "inspect with: git status",
         )
 
+    moved_address = reconcile_kit_remote(root, remote)
     print("%s %d kit path(s) checked, %d changed, %d absent, %d added, %d dropped — %s -> %s"
           % (PREFIX, resolved, changed, absent, len(seeded), len(removed),
              version_before or "?", version_after or "?"))
@@ -291,7 +341,15 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
         print("  + added %s (a seed this base never received)" % relpath)
     for relpath in removed:
         print("  - dropped %s" % relpath)
-    if not changed and not removed and not seeded:
+    for move in carried:
+        print("  > moved %s to %s%s"
+              % (move.source, move.destination, " — %s" % move.note if move.note else ""))
+    if moved_address:
+        print("  = the kit now lives at %s; this base follows it from the next update"
+              % moved_address)
+    for entry in stale_global_wiring(root):
+        print("  ! %s still points somewhere else — that runtime is not reading this base" % entry)
+    if not changed and not removed and not seeded and not carried:
         print("YOU MUST: nothing arrived — the base was already current. Say so in one short "
               "line only if the person asked; otherwise say nothing.")
         return 0

@@ -37,7 +37,7 @@ So `doctrine/skill-creation.md`'s gate carries a decomposition step: **before in
 default, monolithic skills the exception. This keeps each mechanical fact in one home and
 skills thin.
 
-## Tools live in `tools/`, catalogued in `tools/_index.md`
+## Tools live in `tools/`, catalogued beside them
 
 - Scripts are **cross-platform** (rules/cross-platform.md): Python-first or Node, `pathlib`
   / portable paths, no hardcoded home paths, parity across OSes.

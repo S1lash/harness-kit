@@ -70,6 +70,7 @@ engine:
   - tools/mcp-wrapper.js
   - tools/lib/
   - tools/tests/
+  - tools/_kit.md
   - .claude/commands/
   - .claude/settings.json
 
@@ -91,6 +92,7 @@ engine:
   - README.md
   - CHANGELOG.md
   - DECISIONS.md
+  - KNOWN-LIMITS.md
   - LICENSE
   - VERSION
   - .engine-manifest.yml

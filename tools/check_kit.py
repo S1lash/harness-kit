@@ -27,6 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib import manifest as manifest_lib  # noqa: E402
+from lib import migrate as migrate_lib  # noqa: E402
 
 RELEASE_REF = "main"
 PLUGIN_MANIFEST = ".claude-plugin/plugin.json"
@@ -120,9 +121,7 @@ def check_tools_classified(root, engine, template, exclude, fail):
             continue
         # A directory entry is written with a trailing slash; the path itself has none, so it
         # has to be offered in both shapes or every kit directory reads as undeclared.
-        shapes = (relpath, relpath + "/") if path.is_dir() else (relpath,)
-        if not any(manifest_lib.covered_by(entry, shape)
-                   for entry in declared for shape in shapes):
+        if not manifest_lib.covers(declared, relpath):
             fail("tool declared nowhere: %s" % relpath,
                  "Name it under engine: to ship it, or exclude: if it is the person's.")
 
@@ -154,6 +153,69 @@ def check_version_moved(root, engine, ref, fail):
     if code == 0 and not out.strip():
         fail("VERSION moved since %s but CHANGELOG.md did not" % ref,
              "The update tells each person what changed by reading it.")
+
+
+def check_seeds_unchanged(root, template, ref, fail):
+    """A seed that already exists on a base is never rewritten — so changing one reaches nobody.
+
+    Templates seed at clone time and an update creates one that is MISSING, but never touches one
+    that is present: that is what keeps a person's own rows safe. The cost is that the kit's half
+    of a mixed file is frozen at their clone date. Editing a seed therefore looks like shipping a
+    change and is not one, and nothing downstream ever reports it.
+
+    A seed added since the ref is fine — seeding delivers it. Only an edit to one that already
+    existed is the trap.
+    """
+    code, _ = git("rev-parse", "--verify", "--quiet", ref, root=root)
+    if code != 0:
+        return
+    if git("cat-file", "-e", "%s:VERSION" % ref, root=root)[0] != 0:
+        # Nothing has ever been released from this ref, so no base carries a frozen seed yet.
+        return
+    for entry in template:
+        if not git("cat-file", "-e", "%s:%s" % (ref, entry), root=root)[0] == 0:
+            continue  # new since the ref — seeding delivers it
+        code, out = git("diff", "--name-only", ref, "--", entry, root=root)
+        if code == 0 and out.strip():
+            fail("a seed that already exists on every base was edited: %s" % entry,
+                 "Nobody who has it will ever see the change. Move the part the kit needs to "
+                 "keep current into an engine file this seed links to.")
+
+
+def check_migrations(root, engine, fail):
+    """A declared move must be readable, and must never reach the kit's own space."""
+    try:
+        operations = migrate_lib.parse(root)
+    except migrate_lib.MigrationRefused as refusal:
+        return fail("a declared migration cannot be read: %s" % refusal,
+                    "Every base that takes this release would stop on it.")
+    for move in operations:
+        for path, side in ((move.source, "from"), (move.destination, "to")):
+            if manifest_lib.covers(engine, path):
+                fail("migration %s %s is the kit's own space" % (side, path),
+                     "Replacement and retirement already handle that; a move there is a mistake.")
+
+
+def check_person_space_ships_pristine(root, template, exclude, fail):
+    """The kit's own person-space must be empty, because a clone carries the whole repository.
+
+    There is no extraction step: what is in this repository is what a person gets. `exclude:`
+    keeps an update from touching their space; it does nothing at clone time. So a note the kit's
+    author left under `activities/` or `knowledge/` lands in every base as though it were theirs.
+    """
+    seeds = {entry.rstrip("/") for entry in template}
+    for entry in exclude:
+        if not entry.endswith("/"):
+            continue
+        code, listing = git("ls-files", "--", entry, root=root)
+        if code != 0:
+            continue
+        for relpath in listing.splitlines():
+            name = relpath.rsplit("/", 1)[-1]
+            if relpath in seeds or name in (".gitkeep", ".gitignore"):
+                continue
+            fail("the kit ships its own content in the person's space: %s" % relpath,
+                 "Every clone gets it as though the person wrote it. Move it to a kit-owned path.")
 
 
 def check_removals_retired(root, engine, retired, ref, fail):
@@ -212,7 +274,12 @@ def main(argv) -> int:
     check_retired(root, engine, template, exclude, retired, fail)
     check_versions(root, fail)
     check_canon_listed_once(root, fail)
+    check_migrations(root, engine, fail)
     if args.authoring:
+        # Authoring-only: on a person's base their own knowledge and activities are exactly what
+        # is supposed to be there. This asks whether the KIT is shipping any.
+        check_person_space_ships_pristine(root, template, exclude, fail)
+        check_seeds_unchanged(root, template, args.since, fail)
         check_tools_classified(root, engine, template, exclude, fail)
         check_removals_retired(root, engine, retired, args.since, fail)
         check_version_moved(root, engine, args.since, fail)
