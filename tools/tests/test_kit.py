@@ -332,6 +332,193 @@ class RefusalWordingTests(unittest.TestCase):
         self.assertIn("safe on this machine", directive)
 
 
+class DivergenceAndOutageTests(unittest.TestCase):
+    """The two shapes that lose work if they are handled wrong: both sides moved, and no network."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.addCleanup(self.tmp.cleanup)
+        self.remote = root / "remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(self.remote)], check=True)
+        # Seed the remote first. Cloning an EMPTY repository twice gives each copy its own root
+        # commit, which is a different situation entirely — covered by its own test below.
+        seed = root / "seed"
+        subprocess.run(["git", "clone", "-q", str(self.remote), str(seed)], check=True)
+        git(seed, "config", "user.name", "t")
+        git(seed, "config", "user.email", "t@example.invalid")
+        write(seed, "base.md", "the base\n")
+        git(seed, "add", "-A")
+        git(seed, "commit", "-qm", "start")
+        git(seed, "push", "-q", "origin", "main")
+        self.phone = self._clone(root / "phone")
+        self.laptop = self._clone(root / "laptop")
+
+    def _clone(self, path: Path) -> Path:
+        subprocess.run(["git", "clone", "-q", str(self.remote), str(path)], check=True)
+        git(path, "config", "user.name", "t")
+        git(path, "config", "user.email", "t@example.invalid")
+        (path / "tools").mkdir(exist_ok=True)
+        shutil.copy2(KIT_ROOT / "tools" / "sync.py", path / "tools" / "sync.py")
+        return path
+
+    def sync(self, base: Path, *args):
+        return subprocess.run([sys.executable, str(base / "tools" / "sync.py"), *args],
+                              capture_output=True, text=True)
+
+    def test_work_on_two_sides_is_put_together_and_neither_is_dropped(self):
+        write(self.laptop, "on-the-laptop.md", "written at the desk\n")
+        self.assertEqual(self.sync(self.laptop, "save", "Laptop work").returncode, 0)
+
+        write(self.phone, "on-the-phone.md", "written on the train\n")
+        done = self.sync(self.phone, "save", "Phone work")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+
+        self.assertTrue((self.phone / "on-the-laptop.md").exists(),
+                        "the other side's work must be picked up, not overwritten")
+        self.assertTrue((self.phone / "on-the-phone.md").exists())
+        landed = git(self.remote, "ls-tree", "-r", "--name-only", "main").stdout
+        self.assertIn("on-the-laptop.md", landed)
+        self.assertIn("on-the-phone.md", landed)
+
+    def test_no_force_or_rebase_is_ever_issued(self):
+        source = (KIT_ROOT / "tools" / "sync.py").read_text(encoding="utf-8")
+        # Look for them as passed ARGUMENTS, not as words: the file explains in prose that it
+        # never rebases, and a prose ban must not read as a violation of itself.
+        for banned in ('"--force"', '"-f"', '"--hard"', '"rebase"', '"--force-with-lease"'):
+            self.assertNotIn(banned, source,
+                             "%s disables the protection that makes divergence recoverable" % banned)
+
+    def test_two_different_bases_pointed_at_one_place_are_named_not_merged(self):
+        # A person who runs the installer again on a second machine as a NEW base, then points it
+        # at the repository their real base already lives in. git calls it "unrelated histories";
+        # the person must be told what it means for them, and nothing may be merged blindly.
+        stranger = self.phone.parent / "stranger"
+        stranger.mkdir()
+        git(stranger, "init", "-q", "-b", "main")
+        git(stranger, "config", "user.name", "t")
+        git(stranger, "config", "user.email", "t@example.invalid")
+        (stranger / "tools").mkdir()
+        shutil.copy2(KIT_ROOT / "tools" / "sync.py", stranger / "tools" / "sync.py")
+        write(stranger, "fresh.md", "a brand new base\n")
+        git(stranger, "add", "-A")
+        git(stranger, "commit", "-qm", "fresh")
+        git(stranger, "remote", "add", "origin", str(self.remote))
+        git(stranger, "fetch", "-q", "origin", "main")
+        git(stranger, "branch", "--set-upstream-to", "origin/main", "main")
+
+        done = self.sync(stranger, "save", "Work on the second machine")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("DIFFERENT base", done.stdout)
+        self.assertNotIn("fatal:", done.stdout, "raw git output must never reach the person")
+        self.assertTrue((stranger / "fresh.md").exists(), "nothing of theirs may be lost")
+
+    def test_an_unreachable_remote_keeps_the_work_and_says_where_it_stands(self):
+        git(self.phone, "remote", "set-url", "origin", str(self.phone.parent / "gone.git"))
+        write(self.phone, "note.md", "written while offline\n")
+        done = self.sync(self.phone, "save", "Offline work")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("could not send it out", done.stdout)
+        self.assertNotEqual(git(self.phone, "log", "-1", "--format=%s").stdout.strip(), "",
+                            "the work must still be recorded locally")
+
+
+class SelfHealTests(unittest.TestCase):
+    """The updater ships through the update, so a broken one cannot repair itself normally."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.kit, self.base = root / "kit", root / "base"
+        self.addCleanup(self.tmp.cleanup)
+
+        self.kit.mkdir()
+        write(self.kit, ".engine-manifest.yml", MANIFEST)
+        write(self.kit, "rules/canon.md", "new canon\n")
+        write(self.kit, "seed.md", "pristine seed\n")
+        write(self.kit, "VERSION", "1.0.0\n")
+        install_tools(self.kit)
+        git(self.kit, "init", "-q", "-b", "main")
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "kit")
+
+        self.base.mkdir()
+        write(self.base, ".engine-manifest.yml", "version: 0.9.0\n")  # nothing readable in it
+        write(self.base, "rules/canon.md", "old canon\n")
+        write(self.base, "seed.md", "pristine seed\n")
+        write(self.base, "VERSION", "0.9.0\n")
+        install_tools(self.base)
+        git(self.base, "init", "-q", "-b", "main")
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "their base")
+        git(self.base, "remote", "add", "harness-kit", str(self.kit))
+
+    def test_a_base_whose_manifest_is_unreadable_refuses_rather_than_doing_nothing(self):
+        done = run_update(self.base)
+        self.assertEqual(done.returncode, 2)
+        self.assertIn("no kit paths", done.stderr)
+        self.assertEqual((self.base / "rules/canon.md").read_text(), "old canon\n")
+
+    def test_self_heal_restores_the_machinery_and_completes_the_update(self):
+        done = run_update(self.base, "--self-heal")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual((self.base / "rules/canon.md").read_text(), "new canon\n")
+        self.assertEqual((self.base / "VERSION").read_text().strip(), "1.0.0")
+
+
+@unittest.skipIf(shutil.which("bash") is None, "the shell installer needs bash")
+class InstallerTests(unittest.TestCase):
+    """The installer, run the way a person runs it — once, on a machine that has nothing."""
+
+    ANSWERS = ("{home}", "mybase", "Русский", "Y", "N", "N", "N",
+               "Test Person", "test@example.invalid", "N")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = Path(self.tmp.name) / "home"
+        self.home.mkdir(parents=True)
+        self.addCleanup(self.tmp.cleanup)
+
+    def install(self):
+        answers = "\n".join(a.format(home=self.home) for a in self.ANSWERS) + "\n"
+        env = dict(os.environ, HOME=str(self.home))
+        return subprocess.run(["bash", str(KIT_ROOT / "install.sh")], input=answers,
+                              capture_output=True, text=True, env=env, cwd=str(KIT_ROOT))
+
+    def test_a_fresh_install_leaves_a_base_that_can_travel(self):
+        done = self.install()
+        self.assertEqual(done.returncode, 0, done.stdout[-2000:] + done.stderr[-2000:])
+        base = self.home / "mybase"
+
+        self.assertTrue((base / "projects" / "_index.md").exists(),
+                        "what the person builds must live inside the base")
+        self.assertTrue((base / "tools" / "sync.py").exists())
+        self.assertTrue((base / ".claude" / "settings.json").exists())
+
+        self.assertEqual(git(base, "symbolic-ref", "--short", "HEAD").stdout.strip(), "main",
+                         "a base on another branch pushes to a second branch, and the phone "
+                         "clones the default one and finds nothing")
+        self.assertEqual(len(git(base, "log", "--oneline").stdout.strip().splitlines()), 1,
+                         "the base starts with a history, not a pile of staged files")
+        self.assertEqual(git(base, "status", "--porcelain").stdout.strip(), "")
+        self.assertIn("harness-kit", git(base, "remote").stdout,
+                      "without the kit remote the base can never receive a fix")
+
+        profile = (base / "profile.md").read_text(encoding="utf-8")
+        self.assertIn("**Language:** Русский", profile)
+
+        wiring = (self.home / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("BEGIN HARNESS-KIT", wiring)
+        self.assertIn("@%s/AGENTS.md" % base, wiring,
+                      "the global entry points at the one contract, not at a copied rule list")
+
+    def test_running_it_twice_does_not_stack_a_second_wiring_block(self):
+        self.install()
+        self.install()
+        wiring = (self.home / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertEqual(wiring.count("BEGIN HARNESS-KIT"), 1)
+
+
 class ShippedKitTests(unittest.TestCase):
     """The kit in this working tree is coherent — the same gate a release runs."""
 
