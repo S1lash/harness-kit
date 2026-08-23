@@ -12,6 +12,7 @@ Run:  python3 -m unittest discover -s tools/tests
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -481,7 +482,9 @@ class InstallerTests(unittest.TestCase):
 
     def install(self):
         answers = "\n".join(a.format(home=self.home) for a in self.ANSWERS) + "\n"
-        env = dict(os.environ, HOME=str(self.home))
+        # Declaring this is the point: without it the installer refuses, because an unanswered
+        # question taking a default is indistinguishable from a real answer in the output.
+        env = dict(os.environ, HOME=str(self.home), HARNESS_ANSWERS_ON_STDIN="1")
         return subprocess.run(["bash", str(KIT_ROOT / "install.sh")], input=answers,
                               capture_output=True, text=True, env=env, cwd=str(KIT_ROOT))
 
@@ -517,6 +520,68 @@ class InstallerTests(unittest.TestCase):
         self.install()
         wiring = (self.home / ".claude" / "CLAUDE.md").read_text(encoding="utf-8")
         self.assertEqual(wiring.count("BEGIN HARNESS-KIT"), 1)
+
+
+class WindowsInstallerTests(unittest.TestCase):
+    """Static checks on install.ps1 — no PowerShell here, so these guard what a read can prove.
+
+    Each one stands for a failure that cannot be caught any other way in this environment, and
+    each was a real defect before it was a test.
+    """
+
+    def setUp(self):
+        self.path = KIT_ROOT / "install.ps1"
+        self.raw = self.path.read_bytes()
+        self.text = self.raw.decode("utf-8-sig")
+
+    def test_it_carries_a_utf8_bom(self):
+        # Windows PowerShell 5.1 decodes a BOM-less .ps1 through the system ANSI code page, so
+        # the script's own em dashes become mojibake — including the one inside a negated
+        # character class, which then stops excluding what it was written to exclude.
+        self.assertTrue(self.raw.startswith(b"\xef\xbb\xbf"))
+
+    def test_every_file_read_declares_utf8(self):
+        # Without -Encoding, 5.1 reads through the ANSI code page and a read-modify-write cycle
+        # permanently corrupts the person's profile.md.
+        self.assertNotIn("Get-Content -Raw -LiteralPath", self.text)
+        self.assertNotIn("Get-Content -Raw -Path", self.text)
+
+    def test_no_native_command_runs_outside_the_helper(self):
+        # git and gh write ordinary progress to stderr; under $ErrorActionPreference = 'Stop'
+        # that aborts the installer on a perfectly healthy machine.
+        offenders = [
+            line.strip() for line in self.text.splitlines()
+            if re.search(r"(^|[ (\t])(git|gh) ", line)
+            and "Git-Q" not in line and "Invoke-Native" not in line
+            and "Get-Command" not in line and not line.strip().startswith("#")
+        ]
+        self.assertEqual(offenders, [])
+
+    def test_it_refuses_a_non_interactive_run_like_bash_does(self):
+        self.assertIn("Require-Answers", self.text)
+        self.assertIn("HARNESS_ANSWERS_ON_STDIN", self.text)
+        self.assertIn("HARNESS_ANSWERS_ON_STDIN", (KIT_ROOT / "install.sh").read_text(encoding="utf-8"))
+
+    def test_line_endings_are_lf(self):
+        # .gitattributes forces LF; a CRLF checkout of the bash twin breaks bash outright, and
+        # the two files are meant to stay byte-comparable in this respect.
+        self.assertNotIn(b"\r\n", self.raw)
+
+    def test_both_installers_ask_the_same_questions(self):
+        shell = (KIT_ROOT / "install.sh").read_text(encoding="utf-8")
+        for question in ("Where should your base live?", "What should the base folder be called?",
+                         "What language should the agent talk to you in?", "Do you use Claude Code?",
+                         "Move it inside the base?", "Set that up now?", "Your name", "Your email"):
+            self.assertIn(question, shell, "install.sh lost: %s" % question)
+            self.assertIn(question, self.text, "install.ps1 lost: %s" % question)
+
+    def test_both_doctors_check_the_same_things(self):
+        shell = (KIT_ROOT / "install.sh").read_text(encoding="utf-8")
+        in_shell = set(re.findall(r'check "([^"]*)"', shell)) - {"label"}
+        in_windows = set(re.findall(r'Check "([^"]*)"', self.text))
+        # The one allowed asymmetry: bash hard-requires python3 at the top instead of checking.
+        in_windows.discard("python3 available (needed to catch up automatically)")
+        self.assertEqual(in_shell, in_windows)
 
 
 class ShippedKitTests(unittest.TestCase):

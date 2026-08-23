@@ -1,4 +1,4 @@
-# Harness Kit installer — Windows PowerShell (lockstep twin of install.sh).
+﻿# Harness Kit installer — Windows PowerShell (lockstep twin of install.sh).
 # Same prompts, same wiring. Run in PowerShell:  powershell -ExecutionPolicy Bypass -File .\install.ps1
 #
 # Symlink creation on Windows may require either Developer Mode enabled or an
@@ -6,6 +6,19 @@
 # via the entries written into your agent's global file.
 
 $ErrorActionPreference = 'Stop'
+
+# Every `git` and `gh` call below is a NATIVE command, and native commands write ordinary
+# progress to stderr — "LF will be replaced by CRLF", "No such remote", "does not have any
+# commits yet". Under $ErrorActionPreference = 'Stop' each of those becomes a terminating
+# error (and on PowerShell 7.3+ so does any non-zero exit code), so the installer would abort
+# midway through setting up git on a perfectly healthy machine. Run every native call through
+# this helper, which relaxes the preference for the duration and hands back the output.
+function Invoke-Native {
+  $eap = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try { & $args[0] @($args[1..($args.Count - 1)]) 2>$null } finally { $ErrorActionPreference = $eap }
+}
+function Git-Q { Invoke-Native git @args }
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -30,6 +43,24 @@ function AskYes($q, $def) {
   if ([string]::IsNullOrWhiteSpace($a)) { $a = $def }
   return ($a -match '^(y|yes)$')
 }
+# Every answer is read from stdin. With nothing attached — an agent running this in its own
+# shell — every read returns empty and takes the default, so the script finishes, prints "your
+# base is ready", and has asked the person nothing at all. That output is indistinguishable from
+# a real install, which is what makes it dangerous rather than merely wrong.
+function Require-Answers {
+  if (-not [Console]::IsInputRedirected) { return }
+  if ($env:HARNESS_ANSWERS_ON_STDIN) { return }
+  Say ""
+  Say "STOP: this is not an interactive terminal, so nobody can answer the questions."
+  Say "  Nothing has been changed."
+  Say ""
+  Say "  If you are an AI agent: ask the person each question yourself and perform the"
+  Say "  steps conversationally — that is the supported path. If you genuinely have the"
+  Say "  answers already, pass them on stdin and set HARNESS_ANSWERS_ON_STDIN=1 so the"
+  Say "  choice is explicit. Never let this script take defaults nobody chose."
+  exit 1
+}
+
 function Fail($m) { Say ""; Say "STOP: $m"; exit 1 }
 
 # Idempotent managed-block upsert (mirror of upsert_block in install.sh).
@@ -38,7 +69,11 @@ function Upsert-Block($target, $marker, $block) {
   $end   = "<!-- END $marker -->"
   $managed = "$begin`n" + ($block.TrimEnd("`n")) + "`n$end"
   $old = ""
-  if (Test-Path $target) { $old = Get-Content -Raw -LiteralPath $target }
+  # -Encoding UTF8 is not optional on Windows PowerShell 5.1: without it this reads the file
+  # through the system ANSI code page, so every em dash comes back as mojibake and is written
+  # straight back out — silently corrupting a file the person never asked us to rewrite.
+  if (Test-Path -LiteralPath $target) { $old = Get-Content -Raw -Encoding UTF8 -LiteralPath $target }
+  if (-not $old) { $old = "" }
   if ($old.Contains($begin) -and $old.Contains($end)) {
     $pre  = $old.Substring(0, $old.IndexOf($begin)).TrimEnd("`n")
     $post = $old.Substring($old.IndexOf($end) + $end.Length).TrimStart("`n")
@@ -56,9 +91,13 @@ function Upsert-Block($target, $marker, $block) {
 }
 
 function Make-Symlink($targetPath, $linkPath) {
-  if (Test-Path $linkPath) {
-    $item = Get-Item $linkPath -Force
-    if ($item.LinkType) { Remove-Item $linkPath -Force }
+  # Get-Item, not Test-Path: a link whose target moved still exists but Test-Path resolves it
+  # and reports false, so the stale link would never be repaired. And .Delete() on the
+  # DirectoryInfo removes the link itself — Remove-Item on a directory symlink can recurse into
+  # the TARGET and take the canon with it.
+  $item = Get-Item -LiteralPath $linkPath -Force -ErrorAction SilentlyContinue
+  if ($item) {
+    if ($item.LinkType) { $item.Delete() }
     else { Say "  note: $linkPath already exists and is not a link — leaving it, the @-imports still work."; return }
   }
   try {
@@ -76,9 +115,11 @@ $Src = Split-Path -Parent $MyInvocation.MyCommand.Path
 # Two ways in. A fresh copy of the kit becomes a NEW base. A folder whose profile.md already
 # carries a recorded language IS a base — the person is setting it up on another device, and
 # nothing about their content or their history may be touched.
+Require-Answers
+
 $ExistingBase = $false
 $SrcProfile = Join-Path $Src "profile.md"
-if ((Test-Path $SrcProfile) -and ((Get-Content -Raw -LiteralPath $SrcProfile) -match 'the agent converses with you in this language')) {
+if ((Test-Path $SrcProfile) -and ((Get-Content -Raw -Encoding UTF8 -LiteralPath $SrcProfile) -match 'the agent converses with you in this language')) {
   $ExistingBase = $true
 }
 
@@ -112,7 +153,11 @@ if ($ExistingBase) {
   Say ""
 } else {
   $Root = Ask "Where should your base live? (a folder that will contain it)" $HomeDir
-  $Root = [System.IO.Path]::GetFullPath(($Root -replace '^~', $HomeDir))
+  # Resolve against the SHELL's location. [System.IO.Path]::GetFullPath uses the .NET process
+  # directory, which does not follow Set-Location — an answer of "." would land the base in
+  # whatever folder PowerShell happened to start in, commonly System32.
+  if ($Root.StartsWith('~')) { $Root = $HomeDir + $Root.Substring(1) }
+  $Root = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Root)
   $Name = Ask "What should the base folder be called?" "harness"
   $Dest = Join-Path $Root $Name
 
@@ -142,11 +187,20 @@ if (-not $InPlace) {
   if (-not (Test-Path $Dest)) { New-Item -ItemType Directory -Path $Dest -Force | Out-Null }
   $exclude = @('.git', '.DS_Store', '__pycache__', '.venv')
   Get-ChildItem -Force -LiteralPath $Src | Where-Object { $exclude -notcontains $_.Name } | ForEach-Object {
-    Copy-Item -LiteralPath $_.FullName -Destination $Dest -Recurse -Force
+    # Copy the CONTENTS into the destination folder, not the folder into it: `Copy-Item -Recurse`
+    # onto an existing directory produces `rules\rules`, which is the merge case bash handles
+    # with dirs_exist_ok=True.
+    $d = Join-Path $Dest $_.Name
+    if ($_.PSIsContainer) {
+      if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
+      Copy-Item -Path (Join-Path $_.FullName '*') -Destination $d -Recurse -Force
+    } else {
+      Copy-Item -LiteralPath $_.FullName -Destination $d -Force
+    }
   }
   # prune ignored artifacts that may have slipped through nested dirs (mirror the bash ignore_patterns:
   # .venv / __pycache__ dirs and *.log / .DS_Store files, at every level, not just top-level)
-  Get-ChildItem -Path $Dest -Recurse -Force -Directory -Include '__pycache__', '.venv' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+  Get-ChildItem -LiteralPath $Dest -Recurse -Force -Directory -Include '__pycache__', '.venv', '.git' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
   Get-ChildItem -Path $Dest -Recurse -Force -File -Include '*.log', '.DS_Store' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
   Say "  copied base -> $Dest"
 }
@@ -188,7 +242,7 @@ if (-not (Test-Path $ProfileFile)) { Fail "profile.md not found in the base at $
 # ---------------------------------------------------------------------------
 Say ""
 if ($ExistingBase) {
-  $m = [regex]::Match((Get-Content -Raw -LiteralPath $ProfileFile), '(?m)^- \*\*Language:\*\* ([^\r\n—]+)')
+  $m = [regex]::Match((Get-Content -Raw -Encoding UTF8 -LiteralPath $ProfileFile), '(?m)^- \*\*Language:\*\* ([^\r\n—]+)')
   $Lang = if ($m.Success) { $m.Groups[1].Value.Trim() } else { "English" }
   Say "Keeping the language your base already uses: $Lang"
 } else {
@@ -198,7 +252,7 @@ if ($ExistingBase) {
   Say "language you pick here."
   $Lang = Ask "What language should the agent talk to you in?" "English"
 
-  $txt = Get-Content -Raw -LiteralPath $ProfileFile
+  $txt = Get-Content -Raw -Encoding UTF8 -LiteralPath $ProfileFile
   $line = "- **Language:** $Lang — the agent converses with you in this language; code, comments, and identifiers stay English."
   $rx = [regex]'(?m)^- \*\*Language:\*\*.*$'
   if ($rx.IsMatch($txt)) {
@@ -298,56 +352,60 @@ if ($hasGit) {
   # moved aside so 'origin' is free for the person's own copy — and so updates to the kit can
   # still be fetched later from a remote that is clearly not theirs.
   if (Test-Path (Join-Path $Dest ".git")) {
-    $KitUrl = (git -C $Dest remote get-url origin 2>$null)
+    $KitUrl = (Git-Q -C $Dest remote get-url origin)
     if ($KitUrl -and $KitUrl -match 'harness-kit') {
-      git -C $Dest remote remove origin 2>$null
-      git -C $Dest remote remove harness-kit 2>$null
-      git -C $Dest remote add harness-kit $KitUrl
+      Git-Q -C $Dest remote remove origin | Out-Null
+      Git-Q -C $Dest remote remove harness-kit | Out-Null
+      Git-Q -C $Dest remote add harness-kit $KitUrl | Out-Null
       Say "  kept your history; the kit it came from is now remembered separately."
     }
   } else {
-    git -C $Dest init -q
+    Git-Q -C $Dest init -q | Out-Null
     # Name the branch `main` before the first commit. `git init` still defaults to `master` on
     # many installs, and a base on `master` pushed to a repository whose default is `main` ends
     # up with two branches — which is exactly how a phone cloning the default branch finds
     # nothing there (rules/device-sync.md: the base has one branch).
-    git -C $Dest symbolic-ref HEAD refs/heads/main 2>$null
-    $KitUrl = (git -C $Src remote get-url origin 2>$null)
-    if ($KitUrl) { git -C $Dest remote add harness-kit $KitUrl 2>$null }
+    Git-Q -C $Dest symbolic-ref HEAD refs/heads/main | Out-Null
+    $KitUrl = (Git-Q -C $Src remote get-url origin)
+    if ($KitUrl) { Git-Q -C $Dest remote add harness-kit $KitUrl | Out-Null }
     Say "  your base now keeps its own history (so nothing you do is ever lost)."
   }
 
   # Saving needs a name to save under. Asked once, stored for this base only.
-  if (-not (git -C $Dest config user.name 2>$null) -or -not (git -C $Dest config user.email 2>$null)) {
+  if (-not (Git-Q -C $Dest config user.name) -or -not (Git-Q -C $Dest config user.email)) {
     Say ""
     Say "  Every save is stamped with a name, so you can tell your own work apart later."
-    $GitName = Ask "  Your name" $env:USERNAME
+    $defaultName = if ($env:USERNAME) { $env:USERNAME } else { "me" }
+    $GitName = Ask "  Your name" $defaultName
     $GitEmail = Ask "  Your email" ""
-    git -C $Dest config user.name $GitName
-    if ($GitEmail) { git -C $Dest config user.email $GitEmail }
+    # Guarded: with an empty value PowerShell drops the argument and `git config user.name`
+    # becomes the two-token READ form — it prints the setting instead of setting it, and the
+    # question comes back on every future run.
+    if ($GitName)  { Git-Q -C $Dest config user.name $GitName }
+    if ($GitEmail) { Git-Q -C $Dest config user.email $GitEmail }
   }
 
-  git -C $Dest add -A 2>$null
+  Git-Q -C $Dest add -A | Out-Null
   # Leave the base with a history, not with a pile of staged files and no commit: `git log`
   # fails on a repo with none, and the first send-out has nothing to send.
-  $hasCommit = (git -C $Dest log -1 --format=%H 2>$null)
-  $hasStaged = (git -C $Dest diff --cached --name-only 2>$null)
-  if (-not $hasCommit -and $hasStaged) { git -C $Dest commit -q -m "Start this base" 2>$null }
+  $hasCommit = (Git-Q -C $Dest log -1 --format=%H)
+  $hasStaged = (Git-Q -C $Dest diff --cached --name-only)
+  if (-not $hasCommit -and $hasStaged) { Git-Q -C $Dest commit -q -m "Start this base" | Out-Null }
 
   # The one question that actually matters to the person.
   Say ""
   Say "  Your base can live in one private place online. That is what lets you pick up"
   Say "  on your phone what you did on your computer, and the other way round. It is"
   Say "  private — only you can see it."
-  if (git -C $Dest remote get-url origin 2>$null) {
+  if (Git-Q -C $Dest remote get-url origin) {
     $RemoteSet = $true
     Say "  Already set up — leaving it as it is."
   } elseif (AskYes "  Set that up now?" "Y") {
     $hasGh = [bool](Get-Command gh -ErrorAction SilentlyContinue)
-    if ($hasGh) { gh auth status *> $null; $ghReady = ($LASTEXITCODE -eq 0) } else { $ghReady = $false }
+    if ($hasGh) { Invoke-Native gh auth status | Out-Null; $ghReady = ($LASTEXITCODE -eq 0) } else { $ghReady = $false }
     if ($ghReady) {
       $RepoName = Ask "    What should it be called?" (Split-Path -Leaf $Dest)
-      gh repo create $RepoName --private --source $Dest --remote origin *> $null
+      Invoke-Native gh repo create $RepoName --private --source $Dest --remote origin | Out-Null
       if ($LASTEXITCODE -eq 0) {
         $RemoteSet = $true
         Say "    created a private place for your base and connected it."
@@ -386,16 +444,24 @@ Check "keeping-in-step tool present" (Test-Path (Join-Path $Dest "tools/sync.py"
 Check "kit updater present" (Test-Path (Join-Path $Dest "tools/update.py"))
 Check "kit/person path contract present" (Test-Path (Join-Path $Dest ".engine-manifest.yml"))
 Check "sessions start by catching up" (Test-Path (Join-Path $Dest ".claude/settings.json"))
-Check "python3 available (needed to catch up automatically)" ([bool](Get-Command python3 -ErrorAction SilentlyContinue))
-if ($GitOn) { Check "your base has a private place online" ([bool](git -C $Dest remote get-url origin 2>$null)) }
-Check "your language recorded in profile.md" ((Get-Content -Raw -LiteralPath $ProfileFile) -match 'Language:')
+# Resolving the name proves nothing on Windows: `python3.exe` is an App Execution Alias that
+# opens the Microsoft Store, and a real python.org install ships `python.exe` and `py.exe` with
+# no `python3` at all. Ask it for its version and see whether anything answers.
+$pythonWorks = $false
+foreach ($candidate in @(@('python3', '--version'), @('python', '--version'), @('py', '-3', '--version'))) {
+  $out = Invoke-Native @candidate
+  if ($LASTEXITCODE -eq 0 -and $out) { $pythonWorks = $true; break }
+}
+Check "python3 available (needed to catch up automatically)" $pythonWorks
+if ($GitOn) { Check "your base has a private place online" ([bool](Git-Q -C $Dest remote get-url origin)) }
+Check "your language recorded in profile.md" ((Get-Content -Raw -Encoding UTF8 -LiteralPath $ProfileFile) -match 'Language:')
 
 # Canon completeness: every rule file is named in the ONE list that carries the canon to every
 # runtime. A rule missing there is silently not in force (rules/multi-agent.md). Done in pure
 # PowerShell so the check still runs on a machine without python3.
 $contractPath = Join-Path $Dest "AGENTS.md"
 if (Test-Path $contractPath) {
-  $contract = Get-Content -Raw -LiteralPath $contractPath
+  $contract = Get-Content -Raw -Encoding UTF8 -LiteralPath $contractPath
   $missing = @()
   Get-ChildItem -Path (Join-Path $Dest "rules") -Filter '*.md' -ErrorAction SilentlyContinue | ForEach-Object {
     if ($contract -notmatch [regex]::Escape($_.Name)) { $missing += $_.Name }
@@ -411,7 +477,7 @@ if (Test-Path $contractPath) {
 }
 if ($ClaudeWired) {
   $gcm = Join-Path $HomeDir ".claude/CLAUDE.md"
-  if ((Test-Path $gcm) -and ((Get-Content -Raw -LiteralPath $gcm) -match 'BEGIN HARNESS-KIT')) {
+  if ((Test-Path $gcm) -and ((Get-Content -Raw -Encoding UTF8 -LiteralPath $gcm) -match 'BEGIN HARNESS-KIT')) {
     Check "Claude Code global wiring" $true
   } else {
     Check "Claude Code global wiring" $false

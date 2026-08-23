@@ -37,8 +37,27 @@ ask_yes() { # ask_yes "Question" "Y|N default" -> returns 0 for yes, 1 for no
   case "$_a" in Y|y|yes|Yes|YES) return 0;; *) return 1;; esac
 }
 fail() { say ""; say "STOP: $1"; exit 1; }
+# Every answer is read from stdin. With nothing attached — an agent running this in its own
+# shell, for instance — every read hits EOF and takes the default, so the script finishes,
+# prints "your base is ready", and has asked the person nothing at all. That output is
+# indistinguishable from a real install, which is what makes it dangerous rather than merely
+# wrong. Refuse unless somebody has said, explicitly, that answers are being supplied.
+require_answers() {
+  if [ -t 0 ]; then return 0; fi
+  if [ -n "${HARNESS_ANSWERS_ON_STDIN:-}" ]; then return 0; fi
+  say ""
+  say "STOP: this is not an interactive terminal, so nobody can answer the questions."
+  say "  Nothing has been changed."
+  say ""
+  say "  If you are an AI agent: ask the person each question yourself and perform the"
+  say "  steps conversationally — that is the supported path. If you genuinely have the"
+  say "  answers already, pass them on stdin and set HARNESS_ANSWERS_ON_STDIN=1 so the"
+  say "  choice is explicit. Never let this script take defaults nobody chose."
+  exit 1
+}
 
 command -v python3 >/dev/null 2>&1 || fail "python3 is required and was not found. Install Python 3, then re-run this script."
+require_answers
 
 # Absolute directory this script lives in (the source base), portable (no readlink -f).
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -97,6 +116,19 @@ make_symlink() { # make_symlink <target> <link_path>
 }
 
 HOME_DIR="${HOME:-$USERPROFILE}"
+
+# The kit's own address, from the manifest — repo content, so it is the same everywhere.
+KIT_ADDRESS="$(sed -n 's/^kit_remote:[[:space:]]*//p' "$SRC/.engine-manifest.yml" 2>/dev/null | head -1)"
+
+# same_repo <url-a> <url-b> -> "yes" when they name the same repository.
+# Compared by address and never by whether a name contains "harness-kit": a person whose own
+# private base is called harness-kit — the name this kit's own quickstart suggests — would
+# otherwise have their origin stripped and be left with nowhere to save.
+same_repo() {
+  _a="$(printf '%s' "${1:-}" | sed 's/\.git$//; s|/$||' | tr 'A-Z' 'a-z')"
+  _b="$(printf '%s' "${2:-}" | sed 's/\.git$//; s|/$||' | tr 'A-Z' 'a-z')"
+  if [ -n "$_a" ] && [ "$_a" = "$_b" ]; then printf 'yes'; else printf 'no'; fi
+}
 
 # ---------------------------------------------------------------------------
 # 1. intro
@@ -337,8 +369,8 @@ if command -v git >/dev/null 2>&1; then
   # still be fetched later from a remote that is clearly not theirs.
   if [ -d "$DEST/.git" ]; then
     KIT_URL="$(git -C "$DEST" remote get-url origin 2>/dev/null || true)"
-    case "$KIT_URL" in
-      *harness-kit*)
+    case "$(same_repo "$KIT_URL" "$KIT_ADDRESS")" in
+      yes)
         git -C "$DEST" remote remove origin 2>/dev/null || true
         git -C "$DEST" remote remove harness-kit 2>/dev/null || true
         git -C "$DEST" remote add harness-kit "$KIT_URL"
@@ -399,6 +431,9 @@ if command -v git >/dev/null 2>&1; then
     fi
     if [ "$AGENT_MUST_CREATE_REPO" -eq 1 ]; then
       say "    I can't create it from here — your AI agent will do it in a moment."
+      say "    Doing it yourself instead: make a new PRIVATE repository on GitHub, then run"
+      say "      git -C \"$DEST\" remote add origin <its address>"
+      say "      git -C \"$DEST\" push -u origin main"
     fi
   else
     say "  Skipped. Your base stays on this machine only: your phone and your other"
