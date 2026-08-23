@@ -113,10 +113,16 @@ def check_tools_classified(root, engine, template, exclude, fail):
     """
     declared = [e for e in engine + template + exclude]
     for path in sorted((root / "tools").glob("*")):
-        if path.name.startswith(".") or path.name == "lib":
-            continue
         relpath = "tools/%s" % path.name
-        if not any(manifest_lib.covered_by(entry, relpath) for entry in declared):
+        # Generated output is not a tool. Ask git rather than guessing by name — a guess that
+        # misses leaves a permanent false failure, and one that over-matches hides a real tool.
+        if git("check-ignore", "-q", relpath, root=root)[0] == 0:
+            continue
+        # A directory entry is written with a trailing slash; the path itself has none, so it
+        # has to be offered in both shapes or every kit directory reads as undeclared.
+        shapes = (relpath, relpath + "/") if path.is_dir() else (relpath,)
+        if not any(manifest_lib.covered_by(entry, shape)
+                   for entry in declared for shape in shapes):
             fail("tool declared nowhere: %s" % relpath,
                  "Name it under engine: to ship it, or exclude: if it is the person's.")
 

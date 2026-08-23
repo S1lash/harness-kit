@@ -41,8 +41,9 @@ does.
 You have been handed this repository by a person who said **"install"** (or similar). Do the
 setup for them — do not make them learn the structure. Steps:
 
-1. **Read `AGENTS.md`** (and `CLAUDE.md` if you are Claude Code) — that is your operating
-   contract. The canon in `rules/` is your standard and minimum quality bar; load it.
+1. **Read `AGENTS.md`** — the contract every runtime reads, and the one place the canon is
+   listed. (Claude Code reaches it through `CLAUDE.md`, which is one import of it.) The canon in
+   `rules/` is your standard and minimum quality bar; load it.
 2. **Run the installer** for the person's platform — `./install.sh` (macOS / Linux /
    Git-Bash) or `install.ps1` (Windows) — OR perform its steps conversationally if a shell
    is unavailable. The installer:
@@ -83,7 +84,7 @@ you follow it whether or not the session-start hook ran.
 | `knowledge/` | Durable understanding. Ships empty with the routing & growth discipline. |
 | `activities/` | Work that survives sessions. Agent-maintained index + strict anti-bias rule. |
 | `projects/` | The things you build — **inside** the base, so they travel with it. Agent-maintained index. |
-| `tools/` | Executable automation, `sync.py` included (what keeps your devices in step). |
+| `tools/` | Executable automation — what keeps your devices in step, what updates the kit half, and the tests that prove both still work. |
 | `.claude/` | The session wiring: the catch-up hook and the kit's commands. |
 | `plugins/frontend-crafter/` | Bundled: an anti-slop frontend-design skill, ready to use. |
 | `profile.md` | The one personal file — *who you are*, grown carefully by the agent. Not a habit tracker. |

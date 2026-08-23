@@ -45,16 +45,23 @@ exists to make that question rare and, when it happens, answerable in one senten
 - ✅ Update verified across unrelated git histories — the `install.sh` copy path, where a base
   shares no commit with the kit.
 
-## Open — wave 2 leftovers
+## Done — the machinery proves itself
+
+- ✅ `tools/tests/` — 29 tests over the manifest reader, the `*/` coverage rule, the retirement
+  guard, the updater end to end against a real remote (replacement, retirement, idempotence,
+  dry-run, refusals), and `sync.py`. Every one was mutation-checked: the code was broken on purpose
+  and the suite had to catch it. That found the one test guarding a real past bug testing the wrong
+  shape of it — it passed against the very mutation it existed to stop, and now does not.
+
+## Open
 
 - **Migrations are deliberately not ported.** The engine this copies runs an ordered chain with
   `structural` and `heal` kinds and a ledger. Retirement covers removals, which is every case the
   kit has today; a migration runner would be a subsystem shipped to every person with nothing to
   run. Port it the first time an update needs to reshape something inside the person's own space —
   that is the trigger, and until then it is dead weight that must still be maintained.
-- `tools/sync.py` and `tools/update.py` have no automated tests. Both are exercised by hand; the
-  branches that matter (diverged, offline, no remote, no identity, refused retirement) deserve a
-  harness.
+- **Not covered by tests:** the diverged-merge and offline paths of `sync.py`, and `--self-heal`.
+  They need either a second remote or a severed network in the fixture; both are worth adding.
 - The installers' Windows half is not machine-verified — no PowerShell in the environment it was
   written in. It needs one run on a real Windows machine.
 

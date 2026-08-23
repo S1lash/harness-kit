@@ -55,6 +55,7 @@ engine:
   - tools/check_kit.py
   - tools/mcp-wrapper.js
   - tools/lib/
+  - tools/tests/
   - .claude/commands/
   - .claude/settings.json
 

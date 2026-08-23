@@ -55,7 +55,9 @@ The manifest's own header defines them precisely. What they oblige you to do:
 at it, and anything landing there reaches everyone on their next update. Nothing half-finished goes
 to `main`.
 
-Before shipping, run `python3 tools/check_kit.py --authoring`. It fails on every mistake that would
+Before shipping, run `python3 -m unittest discover -s tools/tests` and
+`python3 tools/check_kit.py --authoring`. The tests cover the machinery, the gate covers the
+declaration. It fails on every mistake that would
 otherwise only surface on somebody else's machine, where nobody can see it and they cannot diagnose
 it:
 
@@ -68,4 +70,9 @@ it:
 - kit paths changed without `VERSION` moving (nobody's daily check notices), or `VERSION` moved
   without `CHANGELOG.md` (the update has nothing to tell them).
 
-The structural half of the same gate runs on any base and is what `/harness-doctor` calls.
+The structural half of the same gate runs on any base and is what `/harness-doctor` calls, and so
+do the tests: a base can prove its own machinery works without its owner knowing what any of it is.
+
+A green test that cannot fail proves nothing. When you change any of this, break it on purpose and
+watch the test catch it — that is how the one test guarding a real past bug was caught testing the
+wrong shape of it, passing against the very mutation it existed to stop.

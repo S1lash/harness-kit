@@ -67,6 +67,11 @@ One canon list instead of two, and a gate that catches a bad release before anyo
 - `.claude/skills/` is declared the person's own capability home. `.claude/commands/` beside it is
   the kit's and is replaced on update: a skill authored there would vanish at the next update,
   silently.
+- Add `tools/tests/` — 29 tests over the manifest reader, the retirement guard, the updater driven
+  end to end against a real git remote, and `sync.py`. Each was mutation-checked by breaking the
+  code on purpose; that caught the regression test for a real past bug testing the wrong shape of
+  it, passing against the very mutation it existed to stop. What was verified by hand once now
+  re-runs, and `/harness-doctor` runs it on any base.
 - Add `tools/check_kit.py`. Its structural half runs on any base and is what `/harness-doctor`
   calls; `--authoring` adds the release checks — a removal without a `retired:` line, a retired path
   that still ships, a tool declared nowhere, kit paths changed without `VERSION` moving, `VERSION`
