@@ -1,7 +1,7 @@
 {
     "name": "harness-kit",
     "version": "0.2.0",
-    "description": "A cloneable, de-anonymized personal harness for working with AI agents. Ships a canon of hard rules (loaded hot), self-learning, knowledge that survives sessions, an agent-owned structure, and a concierge stance. /harness-init sets up a freshly-cloned base; /harness-add-skill runs the skill-creation gate; /harness-doctor health-checks the base. Solo, cross-agent, domain-agnostic — clone it and it's yours to grow.",
+    "description": "A cloneable personal harness for working with AI agents: a hot canon of hard rules, self-learning, knowledge and activities that survive sessions, an agent-owned structure, and a concierge stance. One base follows the person across their computer, their phone and any agent working for them — `/harness-sync` keeps those in step and `/harness-update` brings the kit half up to date without ever touching what they wrote. `/harness-init` sets up a fresh base, `/harness-project-init` gives a project the contract an agent needs to open it cold, `/harness-add-skill` runs the skill-creation gate, `/harness-doctor` health-checks the base. Solo, cross-agent (Claude / Codex / Cursor), domain-agnostic.",
     "author": {
         "name": "Ilya Kuzmichev"
     },

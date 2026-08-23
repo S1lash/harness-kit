@@ -5,7 +5,18 @@
 > list. This is the **verification rail**: each item closes a failure that has already happened
 > (dead links from guessed headings, inline tool mechanics, tombstones, under-verification).
 
-## 0. Where to put it (for a new fact)
+## 0. Whose is it (before anything else, when editing a base)
+
+- **The kit's or the person's?** `.engine-manifest.yml` answers it, and
+  `doctrine/kit-ownership.md` says what follows. A person's fact written into a kit path survives
+  exactly until the next update; kit content copied into a person's path is a second truth no
+  update will ever correct.
+- **Changing a `template:` file?** Its kit-maintained half is frozen at every existing base's clone
+  date. Whatever needs to stay current belongs in an engine file the seed links to.
+- **Moving something in the person's space?** That is a `migrations:` declaration, never an edit
+  made by hand in one base.
+
+## 0.1 Where to put it (for a new fact)
 
 - **Canon question** (rules/sot-dry-srp.md → home-by-object): about the **object itself** → the
   object's home; about **our process** with it → a topic domain **by link**; about **a callable

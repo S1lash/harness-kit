@@ -44,6 +44,7 @@ relevant flow fixes what it surfaces.
    `engine:` for anything the person or their agent wrote — it survives exactly until the next
    update (`doctrine/kit-ownership.md`). Any find is a FAIL naming the file and its real home.
 10. **Indexes present.** `knowledge/_index.md`, `activities/_index.md`, `tools/_index.md`,
+    `tools/_kit.md`,
    `projects/_index.md` exist and parse.
 11. **MCP wrapped.** Every local MCP server (Docker / npx / native) in the agent's MCP config routes
    through `tools/mcp-wrapper.js`. An unwrapped local server is a FAIL

@@ -11,8 +11,9 @@ only the first kind. The result is one ordinary save in their base, revertible l
 
 ## Steps
 
-1. **Look before touching** — `python3 tools/update.py --dry-run`. It names every kit path
-   that actually differs, and every path the kit has retired and will drop.
+1. **Look before touching** — `python3 tools/update.py --dry-run`. It names every kit path that
+   actually differs, every seed this base never received and will now get, every path of theirs
+   that a declared move will relocate, and everything the kit has retired and will drop.
 2. **Read the refusals as instructions, not errors.**
    - *No kit remote* → this base was never connected to the kit it came from. Say that in
      plain words and offer to connect it (`git remote add harness-kit <url>`).
@@ -22,6 +23,9 @@ only the first kind. The result is one ordinary save in their base, revertible l
    - *Not one kit path was found* → the update machinery on this base is broken, not the
      kit. Run `python3 tools/update.py --self-heal`, which restores the updater from the
      remote before trusting it, then retries.
+   - *A declared change cannot be carried out* → either it would land on something of theirs, or
+     it names a verb this base's updater does not know. In the second case the machinery has just
+     replaced itself: run the update once more and it will understand.
 3. **Apply** — `python3 tools/update.py`. It names every path it replaced, added, moved or
    dropped — read that list rather than the counts, and tell the person about anything of theirs
    that moved. It replaces the kit's paths, drops the retired

@@ -41,7 +41,9 @@ skills thin.
 
 - Scripts are **cross-platform** (rules/cross-platform.md): Python-first or Node, `pathlib`
   / portable paths, no hardcoded home paths, parity across OSes.
-- Every tool gets a row in `tools/_index.md` so the agent knows what exists and how to
+- Every tool gets a row: the kit's own in `tools/_kit.md`, which updates keep current, and the
+  person's in `tools/_index.md`, which no update touches. One owner per file, so neither half
+  freezes or gets overwritten. A row tells the agent what exists and how to
   invoke it — the person never hunts for a tool, the agent orients from the catalog.
 
 ## The MCP layer — wrap every local server

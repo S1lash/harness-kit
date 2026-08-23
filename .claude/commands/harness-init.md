@@ -11,8 +11,13 @@ This is the runnable form of the installer plus the one step only you can do.
 
 1. **Load your contract** — read `AGENTS.md` (and `CLAUDE.md` if you are Claude Code). The canon in
    `rules/` is your standard; it must be hot.
-2. **Run the installer** — `./install.sh` (macOS / Linux / Git-Bash) or `install.ps1` (Windows). No
-   shell available → perform its steps conversationally. It:
+2. **Ask the questions yourself, or run the installer.** The installer reads its answers from a
+   terminal, so running it from your own shell means nobody is there to answer — it refuses rather
+   than taking defaults nobody chose, because a base built from silent defaults looks exactly like
+   one that was set up properly. Either walk its steps conversationally (the supported path), or,
+   once the person has answered every question, pass the answers on stdin with
+   `HARNESS_ANSWERS_ON_STDIN=1`. Either way it is `./install.sh` (macOS / Linux / Git-Bash) or
+   `install.ps1` (Windows), and it:
    - recognises whether this is a **new base** or **their existing base arriving on another
      device**, and in the second case touches neither their content nor their history;
    - asks **where** to place the base and **what to name** it; everything they build lives in

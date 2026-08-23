@@ -48,6 +48,11 @@ Two things the kit could not do, and the gates that keep them from coming back:
   whole repository — so the kit's own working notes under `activities/` would have landed in every
   base as though the person had written them. They are gone, `KNOWN-LIMITS.md` carries what they
   said, and a gate fails any release that puts them back.
+- Everything that describes the kit was brought back in step with it in the same change: the
+  README now lists the engine files it never mentioned, the tool catalogue is documented as the two
+  files it became, the plugin manifests name all six commands, the edit checklist asks whose a path
+  is before anything else, and both the installer's flow docs say what happens when nobody is there
+  to answer its questions. The kit's own working notes are gone from the person's space.
 - The suite is at 65 tests, every one mutation-checked. That found two gates that were tested as
   functions but never as wired, so the gate is now also exercised end to end the way an author runs
   it.

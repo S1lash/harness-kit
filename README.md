@@ -49,9 +49,11 @@ setup for them — do not make them learn the structure. Steps:
 1. **Read `AGENTS.md`** — the contract every runtime reads, and the one place the canon is
    listed. (Claude Code reaches it through `CLAUDE.md`, which is one import of it.) The canon in
    `rules/` is your standard and minimum quality bar; load it.
-2. **Run the installer** for the person's platform — `./install.sh` (macOS / Linux /
-   Git-Bash) or `install.ps1` (Windows) — OR perform its steps conversationally if a shell
-   is unavailable. The installer:
+2. **Ask the questions yourself, or run the installer.** It reads answers from a terminal, so
+   running it from your own shell means nobody is there to answer — it stops rather than taking
+   defaults nobody chose. Walk its steps conversationally, or pass the person's answers on stdin
+   with `HARNESS_ANSWERS_ON_STDIN=1`. It is `./install.sh` (macOS / Linux / Git-Bash) or
+   `install.ps1` (Windows), and it:
    - recognises whether this is a **new base** or **their existing base arriving on another
      device** — in the second case it touches neither their content nor their history;
    - asks **where** to place the base and **what to name** it. Everything they build lives in
@@ -96,6 +98,11 @@ you follow it whether or not the session-start hook ran.
 | `install.sh` · `install.ps1` | The conversational, cross-platform installer. |
 | `AGENTS.md` | The contract every runtime reads — the canon list lives here and nowhere else. |
 | `CLAUDE.md` | One import of `AGENTS.md` plus Claude-only notes. |
+| `.engine-manifest.yml` | Which paths are the kit's and which are yours, what an update replaces, seeds, moves and drops. The one place that answers it. |
+| `VERSION` | The kit version this base is on. |
+| `DECISIONS.md` | Why the kit is built the way it is — what was chosen, what else was considered. |
+| `KNOWN-LIMITS.md` | What the kit cannot do yet, stated plainly. |
+| `CHANGELOG.md` | What changed between versions, read aloud to you by `/harness-update`. |
 
 ---
 
