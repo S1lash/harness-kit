@@ -215,6 +215,25 @@ def mode_pull():
     return 0
 
 
+def push_refusal_directive(err):
+    """A refusal the person cannot read is worse than none — translate the known ones."""
+    text = err.lower()
+    if "gh007" in text or "private email address" in text:
+        return ("their work is safe here but was turned away because the address it is stamped "
+                "with is private. Offer to stamp saves with the hidden address their account "
+                "provides instead — '<username>@users.noreply.github.com' — set it for this base, "
+                "and try again. Do not make them go and change a setting.")
+    if "authentication" in text or "could not read username" in text or "403" in text:
+        return ("their work is safe here but the private place online would not accept it, "
+                "because this machine is not signed in to it. Say that plainly and offer to set "
+                "the sign-in up.")
+    if "non-fast-forward" in text or "fetch first" in text or "rejected" in text:
+        return ("something arrived from another device between reading and sending. Bring it in "
+                "and send again — never force.")
+    return ("tell the person their work is safe on this machine but has not reached their other "
+            "devices, and why, in their words")
+
+
 def mode_save(message):
     state = read_state()
     if not state["is_repo"]:
@@ -257,8 +276,7 @@ def mode_save(message):
     code, _, err = git(*args, timeout=NETWORK_TIMEOUT_SECONDS)
     if code != 0:
         print("%s could not send it out: %s" % (PREFIX, err))
-        print("YOU MUST: tell the person their work is safe on this machine but has not reached "
-              "their other devices, and why")
+        print("YOU MUST: %s" % push_refusal_directive(err))
         return 1
 
     final = read_state()
