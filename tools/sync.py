@@ -201,8 +201,21 @@ def mode_pull():
         print(describe(state, "nothing to bring in", directive_for(state)))
         return 0
 
-    code, _, err = git("merge", "--no-rebase", "--no-edit", "@{u}", timeout=NETWORK_TIMEOUT_SECONDS)
+    # `--no-rebase` is a `git pull` flag, not a `git merge` one: passing it here made git print
+    # its usage and fail, so putting two sides together never worked at all.
+    code, _, err = git("merge", "--no-edit", "@{u}", timeout=NETWORK_TIMEOUT_SECONDS)
     if code != 0:
+        if "unrelated histories" in err:
+            # Not a conflict between two versions of one thing — two different bases pointed at
+            # one place. Merging them would union somebody's real base with a blank one, so it
+            # is refused and named instead.
+            print("%s this machine holds a DIFFERENT base from the one saved online — they share "
+                  "no history at all." % PREFIX)
+            print("YOU MUST: tell the person, in their words, that this computer was set up as a "
+                  "new base rather than as a copy of theirs, so the two are not the same thing. "
+                  "Offer to start this machine again from their saved one. Never merge them "
+                  "blindly and never force.")
+            return 1
         conflicts = git_ok("diff", "--name-only", "--diff-filter=U") or err
         print("%s overlapping changes in:\n%s" % (PREFIX, conflicts))
         print("YOU MUST: resolve these by reading what they mean, then save. Never discard a side, "

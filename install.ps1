@@ -307,6 +307,11 @@ if ($hasGit) {
     }
   } else {
     git -C $Dest init -q
+    # Name the branch `main` before the first commit. `git init` still defaults to `master` on
+    # many installs, and a base on `master` pushed to a repository whose default is `main` ends
+    # up with two branches — which is exactly how a phone cloning the default branch finds
+    # nothing there (rules/device-sync.md: the base has one branch).
+    git -C $Dest symbolic-ref HEAD refs/heads/main 2>$null
     $KitUrl = (git -C $Src remote get-url origin 2>$null)
     if ($KitUrl) { git -C $Dest remote add harness-kit $KitUrl 2>$null }
     Say "  your base now keeps its own history (so nothing you do is ever lost)."
@@ -323,6 +328,11 @@ if ($hasGit) {
   }
 
   git -C $Dest add -A 2>$null
+  # Leave the base with a history, not with a pile of staged files and no commit: `git log`
+  # fails on a repo with none, and the first send-out has nothing to send.
+  $hasCommit = (git -C $Dest log -1 --format=%H 2>$null)
+  $hasStaged = (git -C $Dest diff --cached --name-only 2>$null)
+  if (-not $hasCommit -and $hasStaged) { git -C $Dest commit -q -m "Start this base" 2>$null }
 
   # The one question that actually matters to the person.
   Say ""

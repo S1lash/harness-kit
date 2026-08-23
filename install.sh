@@ -347,6 +347,11 @@ if command -v git >/dev/null 2>&1; then
     esac
   else
     git -C "$DEST" init -q
+    # Name the branch `main` before the first commit. `git init` still defaults to `master` on
+    # many installs, and a base on `master` pushed to a repository whose default is `main` ends
+    # up with two branches — which is exactly how a phone cloning the default branch finds
+    # nothing there (rules/device-sync.md: the base has one branch).
+    git -C "$DEST" symbolic-ref HEAD refs/heads/main 2>/dev/null || true
     KIT_URL="$(git -C "$SRC" remote get-url origin 2>/dev/null || true)"
     if [ -n "$KIT_URL" ]; then
       git -C "$DEST" remote add harness-kit "$KIT_URL" 2>/dev/null || true
@@ -365,6 +370,12 @@ if command -v git >/dev/null 2>&1; then
   fi
 
   git -C "$DEST" add -A 2>/dev/null || true
+  # Leave the base with a history, not with a pile of staged files and no commit: `git log`
+  # fails on a repo with none, and the first send-out has nothing to send.
+  if [ -z "$(git -C "$DEST" log -1 --format=%H 2>/dev/null)" ] && \
+     [ -n "$(git -C "$DEST" diff --cached --name-only 2>/dev/null)" ]; then
+    git -C "$DEST" commit -q -m "Start this base" 2>/dev/null || true
+  fi
 
   # The one question that actually matters to the person.
   say ""
