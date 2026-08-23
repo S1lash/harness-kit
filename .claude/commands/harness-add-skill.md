@@ -2,7 +2,7 @@
 description: Author a new skill — but first run the critical gate (reclarify intent, reuse an existing skill, extend a close one, or a rule/nothing if narrow). Only a genuinely new, reusable, uncovered procedure becomes a skill, built to decompose onto tools + instruments by default. Always justify the outcome.
 ---
 
-# /harness:add-skill
+# /harness-add-skill
 
 A recurring task looks like it deserves a repeatable procedure. **Do not jump to creating
 one.** Run the critical gate in `doctrine/skill-creation.md` first — first match stops:

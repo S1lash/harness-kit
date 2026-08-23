@@ -16,7 +16,7 @@ side by side:
   Code, to every other folder.
 - `rules/self-learning.md`: route away from the runtime's own memory store explicitly, by link to
   the rule above.
-- `commands/doctor.md` + `install.sh` health check: verify canon parity — every file in `rules/` is
+- `.claude/commands/harness-doctor.md` + `install.sh` health check: verify canon parity — every file in `rules/` is
   named in both hand-maintained lists (`CLAUDE.md`, `AGENTS.md`). A rule listed for one agent and
   missing for another was previously undetectable, and reads as in-force when it is not.
 
@@ -27,6 +27,35 @@ side by side:
   shown to someone else is hand-authored inline SVG, and a standalone HTML file declares
   `charset=utf-8` or non-ASCII text reaches the reader as mojibake. Three traps that cost a rebuild
   each time they are met fresh.
+
+## 2026-08-23
+
+One base, working the same from a computer, a phone, and an agent running on a server. The pieces
+that made those three diverge silently, closed together:
+
+- `projects/` moved **inside** the base. A session opened from a fresh clone gets one repository;
+  anything beside it does not exist there. `projects/_index.md` maps them, including a project the
+  person deliberately gave its own repository. `rules/sot-dry-srp.md` home boundary and the
+  installers follow.
+- Add `rules/device-sync.md` (hot canon): one repository, one branch; bring changes in silently
+  because nobody would choose a stale base; propose saving in one plain sentence and then stop
+  asking for the session; never a git word in front of the person. Behaviour keyed to whether the
+  working copy survives and whether anybody is in the loop — so a headless agent owning its own
+  base is the same rule, not an exception.
+- `rules/git-safety.md`: saving is proactive in the person's base and asked in a repository of
+  code; branch-first applies to code, not to the base.
+- `tools/sync.py` holds the mechanics and `.claude/settings.json` runs its safe part at session
+  start; `/harness-sync` is the manual entry point. The script never forces, never rebases, and
+  refuses to pull over unsaved work.
+- Commands moved to `.claude/commands/` so a fresh clone carries them with nothing installed; the
+  plugin manifest points at the same files.
+- Installers: two ways in — a new base, or an existing base arriving on another device, which
+  touches neither content nor history. Installing never deletes `.git`; the kit's own remote is
+  kept as `harness-kit` so `origin` belongs to the person. The private copy online is set up by
+  default (it is what makes a phone possible), and a `projects/` folder left outside the base is
+  offered a move in.
+- Add `doctrine/kit-ownership.md`: which paths an update may replace and which it must never touch.
+  This replaces the previous fork-and-own stance in `README.md`.
 
 ## 2026-07-16
 

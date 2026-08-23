@@ -2,3 +2,7 @@
 *.log
 .venv/
 __pycache__/
+
+# Per-machine agent settings. These describe THIS computer, not the base — carrying them to
+# another device is how two surfaces start behaving differently (rules/device-sync.md).
+.claude/settings.local.json

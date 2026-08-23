@@ -1,0 +1,21 @@
+{
+    "hooks": {
+        "SessionStart": [
+            {
+                "matcher": "startup|resume|clear",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3",
+                        "args": [
+                            "${CLAUDE_PROJECT_DIR}/tools/sync.py",
+                            "session-start"
+                        ],
+                        "timeout": 120,
+                        "statusMessage": "Bringing your base up to date"
+                    }
+                ]
+            }
+        ]
+    }
+}

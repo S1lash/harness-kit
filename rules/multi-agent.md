@@ -42,7 +42,7 @@ surfaces are maintained by hand and will not update themselves:
   next session inherits blind.
 - **Say which surfaces you touched** when you change canon. One line, not a report.
 - **Verify, don't assume:** the file list in `rules/`, the `@`-list in `CLAUDE.md`, and the canon
-  list in `AGENTS.md` name the same set. `/harness:doctor` checks this; so can you, by eye.
+  list in `AGENTS.md` name the same set. `/harness-doctor` checks this; so can you, by eye.
 
 ## Different capabilities, identical canon
 

@@ -14,12 +14,17 @@ Any project, any session.
   dirty worktree, an unmerged branch) — that is a STOP signal, not an obstacle to bypass: show the
   person the reason (e.g. `git status` of the target), decide together.
 
-## Stage changes, commit only when asked
+## Saving work — the base is proposed, a code repository is asked
 
-- After every file create / edit / delete → `git add` the affected paths. As the last step of any
-  task touching files, run `git add <paths>` and verify with `git status --short`.
-- Add new files to tracking, but **do not commit or push unless the person asks**.
-- Never work directly on the default branch for a non-trivial change — branch first.
+- After every file create / edit / delete → `git add` the affected paths, and verify with
+  `git status --short`.
+- **In the person's base** (the harness repo itself, `projects/` included): saving is proactive.
+  You propose it in one plain sentence, and after their first yes you keep saving silently for the
+  rest of the session; with nobody in the loop you save on your own. The base has one branch and no
+  others. Full contract: `rules/device-sync.md`.
+- **In a repository of code** (a project that was moved to its own repo, someone else's repo):
+  commit and push only when asked, and never work directly on the default branch for a non-trivial
+  change — branch first.
 - All file deletions are confirmed with the person before running.
 
 ## Commits

@@ -12,6 +12,7 @@ Cross-agent detail lives in `AGENTS.md`; deep how-to in `doctrine/` (on demand).
 @rules/self-learning.md
 @rules/harness-stewardship.md
 @rules/multi-agent.md
+@rules/device-sync.md
 @rules/grounding.md
 @rules/present-not-history.md
 @rules/git-safety.md
@@ -21,9 +22,14 @@ Cross-agent detail lives in `AGENTS.md`; deep how-to in `doctrine/` (on demand).
 
 ## Harness home
 
-This directory is the base. `knowledge/_index.md` and `activities/_index.md` here are your
-maps, reachable from any working directory. The person builds things in the sibling
-`../projects/`. You own the structure — the person never manages folders.
+This directory is the base, and it is one git repository — **its root IS the base**, always.
+`knowledge/_index.md`, `activities/_index.md` and `projects/_index.md` here are your maps,
+reachable from any working directory. The person builds things in `projects/` inside this
+repository, so any surface that has the base has everything. You own the structure — the person
+never manages folders.
+
+The base follows the person across their computer, their phone, and any agent working for them.
+Keeping those in step is your job, not theirs: `rules/device-sync.md`.
 
 ## Three-tier loading model
 

@@ -11,7 +11,9 @@
 
 ## Active
 
-_(none yet)_
+| Activity | Status | Last touched |
+|---|---|---|
+| `harness-git-architecture.md` | one base across a computer, a phone and an agent — wave 1 landed, update channel and secret hygiene open | 2026-08-23 |
 
 <!-- one row per activity:
 | Activity | Status | Last touched |

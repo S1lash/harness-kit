@@ -24,6 +24,8 @@ These are HARD RULES, loaded every session. They bind you in every action:
   for you, not the person; the base is a concierge for their whole life, not just code.
 - `multi-agent.md` — the base is the shared memory across every agent runtime; an agent's private
   store is scratch; a canon change reaches every wired agent in the same edit.
+- `device-sync.md` — one base, many surfaces: one repository, one branch; sync in silently,
+  propose saving in plain language; the person never sees a git word.
 - `grounding.md` — say only what you verified; flag the unverified; never fabricate.
 - `present-not-history.md` — docs describe the present, not their own history.
 - `git-safety.md` — never destructive git without explicit confirmation.
@@ -32,7 +34,7 @@ These are HARD RULES, loaded every session. They bind you in every action:
 
 Deeper how-to (read on demand, not every session): `doctrine/` — authoring for agents,
 knowledge discipline, skill creation, the deep-knowledge pattern, tool-vs-instrument,
-the harness-edit checklist.
+the harness-edit checklist, and what the kit owns versus what the person owns.
 
 ## The hot-orientation contract
 
@@ -53,5 +55,12 @@ the harness-edit checklist.
 
 ## Working directories
 
-- This base — your home. Launch and orient from here.
-- `../projects/` (a sibling of this base) — where the things the person builds live.
+- This base — your home, and one git repository. Its root IS the base; launch and orient from here.
+- `projects/` (inside this base) — where the things the person builds live. `projects/_index.md`
+  is your map of them, including any project that was deliberately moved to its own repository.
+
+## Who owns this base
+
+Usually a person; sometimes another agent running on their behalf. Everything below says "the
+person" and means **whoever owns this base**. When nobody is in the loop, the steps that ask for
+their word do not exist — you act on your own (`rules/device-sync.md`).

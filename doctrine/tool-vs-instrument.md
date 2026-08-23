@@ -48,7 +48,7 @@ skills thin.
 
 Every local MCP server (Docker, npx, native binary) is wrapped by `tools/mcp-wrapper.js` to
 prevent zombie processes/containers when the session exits. This is **not optional** — an
-unwrapped local MCP server is a defect `/harness:doctor` flags.
+unwrapped local MCP server is a defect `/harness-doctor` flags.
 
 - Wrap it in the agent's MCP config by routing the command through the wrapper:
   ```

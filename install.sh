@@ -8,7 +8,7 @@
 # What it does: places this base where you want it, names it, records the
 # language you want the agent to talk to you in, wires the canon into every
 # AI agent you use so it's active from any folder, optionally sets up git,
-# creates a sibling projects/ folder, then runs a quick health check.
+# keeps everything they build inside the base, then runs a quick health check.
 
 set -u
 
@@ -42,6 +42,14 @@ command -v python3 >/dev/null 2>&1 || fail "python3 is required and was not foun
 
 # Absolute directory this script lives in (the source base), portable (no readlink -f).
 SRC="$(cd "$(dirname "$0")" && pwd)"
+
+# Two ways in. A fresh copy of the kit becomes a NEW base. A folder whose profile.md already
+# carries a recorded language IS a base — the person is setting it up on another device, and
+# nothing about their content or their history may be touched.
+EXISTING_BASE=0
+if [ -f "$SRC/profile.md" ] && grep -q 'the agent converses with you in this language' "$SRC/profile.md" 2>/dev/null; then
+  EXISTING_BASE=1
+fi
 
 # Portable managed-block upsert: keeps an idempotent block between markers.
 # Re-running the installer replaces the block instead of appending a duplicate.
@@ -109,34 +117,43 @@ say "for you and wires everything up. A few plain questions follow."
 say ""
 
 # ---------------------------------------------------------------------------
-# 2. where + name
+# 2. where + name  (or: recognise a base that already exists)
 # ---------------------------------------------------------------------------
-ROOT="$(ask "Where should your base live? (a folder that will contain it)" "$HOME_DIR")"
-ROOT="$(python3 -c 'import os,sys; print(os.path.abspath(os.path.expanduser(sys.argv[1])))' "$ROOT")"
-NAME="$(ask "What should the base folder be called?" "harness")"
-DEST="$ROOT/$NAME"
-PROJECTS="$ROOT/projects"
-
-say ""
-say "Plan:"
-say "  base     -> $DEST"
-say "  projects -> $PROJECTS   (created beside the base, for the things you'll build)"
-say ""
-
 INPLACE=0
-if [ "$DEST" = "$SRC" ]; then
+if [ "$EXISTING_BASE" -eq 1 ]; then
+  DEST="$SRC"
   INPLACE=1
-  say "You're installing in place (the base stays right here)."
+  say "This is already your base — I'll set this device up to use it and leave your"
+  say "content and history alone."
+  say ""
 else
-  if [ -e "$DEST" ]; then
-    if ask_yes "  $DEST already exists. Copy the base into it anyway?" "N"; then :; else
-      fail "Nothing changed. Re-run and pick a different name or location."
+  ROOT="$(ask "Where should your base live? (a folder that will contain it)" "$HOME_DIR")"
+  ROOT="$(python3 -c 'import os,sys; print(os.path.abspath(os.path.expanduser(sys.argv[1])))' "$ROOT")"
+  NAME="$(ask "What should the base folder be called?" "harness")"
+  DEST="$ROOT/$NAME"
+
+  say ""
+  say "Plan:"
+  say "  base -> $DEST"
+  say "  everything you build lives inside it, in $DEST/projects"
+  say ""
+
+  if [ "$DEST" = "$SRC" ]; then
+    INPLACE=1
+    say "You're installing in place (the base stays right here)."
+  else
+    if [ -e "$DEST" ]; then
+      if ask_yes "  $DEST already exists. Copy the base into it anyway?" "N"; then :; else
+        fail "Nothing changed. Re-run and pick a different name or location."
+      fi
     fi
   fi
 fi
 
+PROJECTS="$DEST/projects"
+
 # ---------------------------------------------------------------------------
-# 3. place the base + create projects sibling
+# 3. place the base
 # ---------------------------------------------------------------------------
 if [ "$INPLACE" -eq 0 ]; then
   say "Placing the base..."
@@ -165,6 +182,34 @@ if [ ! -d "$PROJECTS" ]; then
   say "  created $PROJECTS"
 fi
 
+# An earlier layout kept projects beside the base, where a phone or a second machine can
+# never see them. Bring them in.
+LEGACY_PROJECTS="$(dirname "$DEST")/projects"
+if [ -d "$LEGACY_PROJECTS" ] && [ "$LEGACY_PROJECTS" != "$PROJECTS" ]; then
+  say ""
+  say "  Found $LEGACY_PROJECTS outside your base. Anything there is invisible to your"
+  say "  phone and to your other computers, because only the base travels."
+  if ask_yes "  Move it inside the base?" "Y"; then
+    python3 - "$LEGACY_PROJECTS" "$PROJECTS" <<'PY'
+import os, shutil, sys
+src, dest = sys.argv[1], sys.argv[2]
+moved = []
+for name in os.listdir(src):
+    s, d = os.path.join(src, name), os.path.join(dest, name)
+    if os.path.exists(d):
+        print("  kept in place (already inside the base): " + name)
+        continue
+    shutil.move(s, d)
+    moved.append(name)
+if moved:
+    print("  moved inside the base: " + ", ".join(moved))
+if not os.listdir(src):
+    os.rmdir(src)
+    print("  removed the now-empty " + src)
+PY
+  fi
+fi
+
 PROFILE="$DEST/profile.md"
 [ -f "$PROFILE" ] || fail "profile.md not found in the base at $PROFILE — the base looks incomplete."
 
@@ -172,6 +217,16 @@ PROFILE="$DEST/profile.md"
 # 4. language -> profile.md
 # ---------------------------------------------------------------------------
 say ""
+if [ "$EXISTING_BASE" -eq 1 ]; then
+  LANG="$(python3 - "$PROFILE" <<'PY'
+import re, sys
+txt = open(sys.argv[1], encoding="utf-8").read()
+m = re.search(r"^- \*\*Language:\*\* ([^\n—]+)", txt, re.M)
+print(m.group(1).strip() if m else "English")
+PY
+)"
+  say "Keeping the language your base already uses: $LANG"
+else
 say "Your agent talks to YOU in your language. The base content stays"
 say "English (it's the shared standard, and code is always English), but"
 say "the agent will converse, explain, and ask you things in whatever"
@@ -194,6 +249,7 @@ with open(path, "w", encoding="utf-8") as f:
     f.write(txt)
 print("  set Language: %s in profile.md" % lang)
 PY
+fi
 
 # ---------------------------------------------------------------------------
 # 5. wire agents
@@ -276,58 +332,80 @@ if ask_yes "Do you use another AI agent I should point at this base?" "N"; then
 fi
 
 # ---------------------------------------------------------------------------
-# 6. git
+# 6. keeping the base — history, identity, and the copy that follows the person
 # ---------------------------------------------------------------------------
 say ""
 GIT_ON=0
-if command -v git >/dev/null 2>&1 && ask_yes "Track your base with git? (recommended — it's a safety net for your own history)" "Y"; then
+REMOTE_SET=0
+AGENT_MUST_CREATE_REPO=0
+
+if command -v git >/dev/null 2>&1; then
   GIT_ON=1
+
+  # The kit's own history is never destroyed. If this folder came from the kit, its origin is
+  # moved aside so 'origin' is free for the person's own copy — and so updates to the kit can
+  # still be fetched later from a remote that is clearly not theirs.
   if [ -d "$DEST/.git" ]; then
-    if ask_yes "  This folder already has git history from the template. Start fresh with YOUR own history?" "Y"; then
-      rm -rf "$DEST/.git"
-      git -C "$DEST" init -q
-      say "  started a fresh git repo for your base."
-    else
-      say "  kept the existing git history."
-    fi
+    KIT_URL="$(git -C "$DEST" remote get-url origin 2>/dev/null || true)"
+    case "$KIT_URL" in
+      *harness-kit*)
+        git -C "$DEST" remote remove origin 2>/dev/null || true
+        git -C "$DEST" remote remove harness-kit 2>/dev/null || true
+        git -C "$DEST" remote add harness-kit "$KIT_URL"
+        say "  kept your history; the kit it came from is now remembered separately."
+        ;;
+    esac
   else
     git -C "$DEST" init -q
-    say "  git repo created for your base."
+    KIT_URL="$(git -C "$SRC" remote get-url origin 2>/dev/null || true)"
+    if [ -n "$KIT_URL" ]; then
+      git -C "$DEST" remote add harness-kit "$KIT_URL" 2>/dev/null || true
+    fi
+    say "  your base now keeps its own history (so nothing you do is ever lost)."
   fi
+
+  # Saving needs a name to save under. Asked once, stored for this base only.
+  if [ -z "$(git -C "$DEST" config user.name 2>/dev/null)" ] || [ -z "$(git -C "$DEST" config user.email 2>/dev/null)" ]; then
+    say ""
+    say "  Every save is stamped with a name, so you can tell your own work apart later."
+    GIT_NAME="$(ask "  Your name" "${USER:-me}")"
+    GIT_EMAIL="$(ask "  Your email" "")"
+    git -C "$DEST" config user.name "$GIT_NAME"
+    [ -n "$GIT_EMAIL" ] && git -C "$DEST" config user.email "$GIT_EMAIL"
+  fi
+
   git -C "$DEST" add -A 2>/dev/null || true
 
-  if ask_yes "  Also auto-create a git repo inside each NEW project you build under projects/?" "Y"; then
-    python3 - "$PROFILE" <<'PY'
-import sys
-path = sys.argv[1]
-with open(path, "r", encoding="utf-8") as f:
-    txt = f.read()
-note = "- **Git:** track the base with git; auto-run `git init` inside each new project created under `projects/`."
-if note not in txt:
-    txt = txt.rstrip("\n") + "\n\n" + note + "\n"
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(txt)
-    print("  recorded 'auto-init new projects' in profile.md (the agent honors it).")
-PY
-  fi
-
+  # The one question that actually matters to the person.
   say ""
-  say "  A REMOTE keeps a copy off your machine and syncs across your computers."
-  if ask_yes "  Want your base on all your machines (add a remote now)?" "N"; then
-    REMOTE_URL="$(ask "    Paste the git remote URL (e.g. git@github.com:you/your-base.git)" "")"
-    if [ -n "$REMOTE_URL" ]; then
-      git -C "$DEST" remote remove origin 2>/dev/null || true
-      git -C "$DEST" remote add origin "$REMOTE_URL"
-      say "    remote 'origin' set to $REMOTE_URL"
-      say "    (nothing pushed yet — commit when you're ready, then: git -C \"$DEST\" push -u origin HEAD)"
+  say "  Your base can live in one private place online. That is what lets you pick up"
+  say "  on your phone what you did on your computer, and the other way round. It is"
+  say "  private — only you can see it."
+  if [ -n "$(git -C "$DEST" remote get-url origin 2>/dev/null || true)" ]; then
+    REMOTE_SET=1
+    say "  Already set up — leaving it as it is."
+  elif ask_yes "  Set that up now?" "Y"; then
+    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+      REPO_NAME="$(ask "    What should it be called?" "$(basename "$DEST")")"
+      if gh repo create "$REPO_NAME" --private --source "$DEST" --remote origin >/dev/null 2>&1; then
+        REMOTE_SET=1
+        say "    created a private place for your base and connected it."
+      else
+        AGENT_MUST_CREATE_REPO=1
+      fi
     else
-      say "    no URL given — skipped the remote. You can add one later."
+      AGENT_MUST_CREATE_REPO=1
+    fi
+    if [ "$AGENT_MUST_CREATE_REPO" -eq 1 ]; then
+      say "    I can't create it from here — your AI agent will do it in a moment."
     fi
   else
-    say "  no remote — your base stays local only. You can add one anytime."
+    say "  Skipped. Your base stays on this machine only: your phone and your other"
+    say "  computers will not see any of it until this is set up."
   fi
 else
-  say "Skipping git — nothing git-related will be touched until you ask."
+  say "git is not installed, so your base cannot follow you between devices yet."
+  say "Install git, then re-run this."
 fi
 
 # ---------------------------------------------------------------------------
@@ -346,7 +424,18 @@ check() { # check "label" 0|1
 [ -f "$DEST/activities/_index.md" ] && check "activities index present" 0 || check "activities index present" 1
 [ -f "$DEST/AGENTS.md" ] && check "cross-agent entry (AGENTS.md) present" 0 || check "cross-agent entry (AGENTS.md) present" 1
 [ -f "$DEST/CLAUDE.md" ] && check "Claude entry (CLAUDE.md) present" 0 || check "Claude entry (CLAUDE.md) present" 1
-[ -d "$PROJECTS" ] && check "projects/ folder beside the base" 0 || check "projects/ folder beside the base" 1
+[ -d "$PROJECTS" ] && check "projects/ inside the base" 0 || check "projects/ inside the base" 1
+[ -f "$DEST/projects/_index.md" ] && check "projects index present" 0 || check "projects index present" 1
+[ -f "$DEST/tools/sync.py" ] && check "keeping-in-step tool present" 0 || check "keeping-in-step tool present" 1
+[ -f "$DEST/.claude/settings.json" ] && check "sessions start by catching up" 0 || check "sessions start by catching up" 1
+if [ "$GIT_ON" -eq 1 ]; then
+  if [ -n "$(git -C "$DEST" remote get-url origin 2>/dev/null || true)" ]; then
+    check "your base has a private place online" 0
+  else
+    say "  MISS your base has a private place online — it stays on this machine only"
+    DOC_OK=0
+  fi
+fi
 
 if grep -q "Language:" "$PROFILE" 2>/dev/null; then check "your language recorded in profile.md" 0; else check "your language recorded in profile.md" 1; fi
 
@@ -401,15 +490,25 @@ fi
 say "==============================================================="
 say ""
 say "Your base:      $DEST"
-say "Your projects:  $PROJECTS"
+say "Your projects:  $PROJECTS   (inside your base, so they travel with it)"
 say "Talks to you:   $LANG"
 say ""
 say "What this means in plain terms:"
 say "  - Launch your AI agent from your base folder and just talk to it."
 say "  - It already knows how you want it to work (the canon is wired in)."
 say "  - You never manage folders — the agent files knowledge and work for you."
-if [ "$GIT_ON" -eq 1 ]; then
-  say "  - Your base is under git. Ask the agent to 'save my work' whenever you want a checkpoint."
+if [ "$REMOTE_SET" -eq 1 ]; then
+  say "  - Everything is kept in one private place online, so your phone and your"
+  say "    computer show the same thing. The agent saves it for you and will ask"
+  say "    before it does."
+fi
+if [ "$AGENT_MUST_CREATE_REPO" -eq 1 ]; then
+  say ""
+  say "ONE STEP LEFT — for the AI agent reading this, not for the person:"
+  say "  Create a PRIVATE repository for this base using your GitHub access, set it as"
+  say "  'origin' in $DEST, and send the base to it. This is also the first check that"
+  say "  your GitHub access works — if it does not, say so plainly and offer the"
+  say "  alternative. Then run: python3 \"$DEST/tools/sync.py\" status"
 fi
 say ""
 say "Personalize one file when you like: $PROFILE"

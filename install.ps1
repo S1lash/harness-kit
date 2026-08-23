@@ -73,6 +73,15 @@ function Make-Symlink($targetPath, $linkPath) {
 $HomeDir = $HOME
 $Src = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Two ways in. A fresh copy of the kit becomes a NEW base. A folder whose profile.md already
+# carries a recorded language IS a base — the person is setting it up on another device, and
+# nothing about their content or their history may be touched.
+$ExistingBase = $false
+$SrcProfile = Join-Path $Src "profile.md"
+if ((Test-Path $SrcProfile) -and ((Get-Content -Raw -LiteralPath $SrcProfile) -match 'the agent converses with you in this language')) {
+  $ExistingBase = $true
+}
+
 # ---------------------------------------------------------------------------
 # 1. intro
 # ---------------------------------------------------------------------------
@@ -92,32 +101,41 @@ Say "for you and wires everything up. A few plain questions follow."
 Say ""
 
 # ---------------------------------------------------------------------------
-# 2. where + name
+# 2. where + name  (or: recognise a base that already exists)
 # ---------------------------------------------------------------------------
-$Root = Ask "Where should your base live? (a folder that will contain it)" $HomeDir
-$Root = [System.IO.Path]::GetFullPath(($Root -replace '^~', $HomeDir))
-$Name = Ask "What should the base folder be called?" "harness"
-$Dest = Join-Path $Root $Name
-$Projects = Join-Path $Root "projects"
-
-Say ""
-Say "Plan:"
-Say "  base     -> $Dest"
-Say "  projects -> $Projects   (created beside the base, for the things you'll build)"
-Say ""
-
 $InPlace = $false
-if ($Dest -eq $Src) {
+if ($ExistingBase) {
+  $Dest = $Src
   $InPlace = $true
-  Say "You're installing in place (the base stays right here)."
-} elseif (Test-Path $Dest) {
-  if (-not (AskYes "  $Dest already exists. Copy the base into it anyway?" "N")) {
-    Fail "Nothing changed. Re-run and pick a different name or location."
+  Say "This is already your base — I'll set this device up to use it and leave your"
+  Say "content and history alone."
+  Say ""
+} else {
+  $Root = Ask "Where should your base live? (a folder that will contain it)" $HomeDir
+  $Root = [System.IO.Path]::GetFullPath(($Root -replace '^~', $HomeDir))
+  $Name = Ask "What should the base folder be called?" "harness"
+  $Dest = Join-Path $Root $Name
+
+  Say ""
+  Say "Plan:"
+  Say "  base -> $Dest"
+  Say "  everything you build lives inside it, in $(Join-Path $Dest 'projects')"
+  Say ""
+
+  if ($Dest -eq $Src) {
+    $InPlace = $true
+    Say "You're installing in place (the base stays right here)."
+  } elseif (Test-Path $Dest) {
+    if (-not (AskYes "  $Dest already exists. Copy the base into it anyway?" "N")) {
+      Fail "Nothing changed. Re-run and pick a different name or location."
+    }
   }
 }
 
+$Projects = Join-Path $Dest "projects"
+
 # ---------------------------------------------------------------------------
-# 3. place the base + create projects sibling
+# 3. place the base
 # ---------------------------------------------------------------------------
 if (-not $InPlace) {
   Say "Placing the base..."
@@ -138,6 +156,30 @@ if (-not (Test-Path $Projects)) {
   Say "  created $Projects"
 }
 
+# An earlier layout kept projects beside the base, where a phone or a second machine can
+# never see them. Bring them in.
+$LegacyProjects = Join-Path (Split-Path -Parent $Dest) "projects"
+if ((Test-Path $LegacyProjects) -and ($LegacyProjects -ne $Projects)) {
+  Say ""
+  Say "  Found $LegacyProjects outside your base. Anything there is invisible to your"
+  Say "  phone and to your other computers, because only the base travels."
+  if (AskYes "  Move it inside the base?" "Y") {
+    Get-ChildItem -Force -LiteralPath $LegacyProjects | ForEach-Object {
+      $target = Join-Path $Projects $_.Name
+      if (Test-Path $target) {
+        Say "  kept in place (already inside the base): $($_.Name)"
+      } else {
+        Move-Item -LiteralPath $_.FullName -Destination $target
+        Say "  moved inside the base: $($_.Name)"
+      }
+    }
+    if (-not (Get-ChildItem -Force -LiteralPath $LegacyProjects)) {
+      Remove-Item -LiteralPath $LegacyProjects
+      Say "  removed the now-empty $LegacyProjects"
+    }
+  }
+}
+
 $ProfileFile = Join-Path $Dest "profile.md"
 if (-not (Test-Path $ProfileFile)) { Fail "profile.md not found in the base at $ProfileFile — the base looks incomplete." }
 
@@ -145,22 +187,28 @@ if (-not (Test-Path $ProfileFile)) { Fail "profile.md not found in the base at $
 # 4. language -> profile.md
 # ---------------------------------------------------------------------------
 Say ""
-Say "Your agent talks to YOU in your language. The base content stays"
-Say "English (it's the shared standard, and code is always English), but"
-Say "the agent will converse, explain, and ask you things in whatever"
-Say "language you pick here."
-$Lang = Ask "What language should the agent talk to you in?" "English"
-
-$txt = Get-Content -Raw -LiteralPath $ProfileFile
-$line = "- **Language:** $Lang — the agent converses with you in this language; code, comments, and identifiers stay English."
-$rx = [regex]'(?m)^- \*\*Language:\*\*.*$'
-if ($rx.IsMatch($txt)) {
-  $txt = $rx.Replace($txt, { param($m) $line }, 1)
+if ($ExistingBase) {
+  $m = [regex]::Match((Get-Content -Raw -LiteralPath $ProfileFile), '(?m)^- \*\*Language:\*\* ([^\r\n—]+)')
+  $Lang = if ($m.Success) { $m.Groups[1].Value.Trim() } else { "English" }
+  Say "Keeping the language your base already uses: $Lang"
 } else {
-  $txt = $txt.TrimEnd("`n") + "`n`n" + $line + "`n"
+  Say "Your agent talks to YOU in your language. The base content stays"
+  Say "English (it's the shared standard, and code is always English), but"
+  Say "the agent will converse, explain, and ask you things in whatever"
+  Say "language you pick here."
+  $Lang = Ask "What language should the agent talk to you in?" "English"
+
+  $txt = Get-Content -Raw -LiteralPath $ProfileFile
+  $line = "- **Language:** $Lang — the agent converses with you in this language; code, comments, and identifiers stay English."
+  $rx = [regex]'(?m)^- \*\*Language:\*\*.*$'
+  if ($rx.IsMatch($txt)) {
+    $txt = $rx.Replace($txt, { param($m) $line }, 1)
+  } else {
+    $txt = $txt.TrimEnd("`n") + "`n`n" + $line + "`n"
+  }
+  Write-Utf8NoBom $ProfileFile $txt
+  Say "  set Language: $Lang in profile.md"
 }
-Write-Utf8NoBom $ProfileFile $txt
-Say "  set Language: $Lang in profile.md"
 
 # ---------------------------------------------------------------------------
 # 5. wire agents
@@ -245,48 +293,76 @@ if (AskYes "Do you use another AI agent I should point at this base?" "N") {
 }
 
 # ---------------------------------------------------------------------------
-# 6. git
+# 6. keeping the base — history, identity, and the copy that follows the person
 # ---------------------------------------------------------------------------
 Say ""
 $GitOn = $false
+$RemoteSet = $false
+$AgentMustCreateRepo = $false
 $hasGit = [bool](Get-Command git -ErrorAction SilentlyContinue)
-if ($hasGit -and (AskYes "Track your base with git? (recommended — it's a safety net for your own history)" "Y")) {
+
+if ($hasGit) {
   $GitOn = $true
+
+  # The kit's own history is never destroyed. If this folder came from the kit, its origin is
+  # moved aside so 'origin' is free for the person's own copy — and so updates to the kit can
+  # still be fetched later from a remote that is clearly not theirs.
   if (Test-Path (Join-Path $Dest ".git")) {
-    if (AskYes "  This folder already has git history from the template. Start fresh with YOUR own history?" "Y") {
-      Remove-Item -Recurse -Force (Join-Path $Dest ".git")
-      git -C $Dest init -q
-      Say "  started a fresh git repo for your base."
-    } else { Say "  kept the existing git history." }
+    $KitUrl = (git -C $Dest remote get-url origin 2>$null)
+    if ($KitUrl -and $KitUrl -match 'harness-kit') {
+      git -C $Dest remote remove origin 2>$null
+      git -C $Dest remote remove harness-kit 2>$null
+      git -C $Dest remote add harness-kit $KitUrl
+      Say "  kept your history; the kit it came from is now remembered separately."
+    }
   } else {
     git -C $Dest init -q
-    Say "  git repo created for your base."
+    $KitUrl = (git -C $Src remote get-url origin 2>$null)
+    if ($KitUrl) { git -C $Dest remote add harness-kit $KitUrl 2>$null }
+    Say "  your base now keeps its own history (so nothing you do is ever lost)."
   }
+
+  # Saving needs a name to save under. Asked once, stored for this base only.
+  if (-not (git -C $Dest config user.name 2>$null) -or -not (git -C $Dest config user.email 2>$null)) {
+    Say ""
+    Say "  Every save is stamped with a name, so you can tell your own work apart later."
+    $GitName = Ask "  Your name" $env:USERNAME
+    $GitEmail = Ask "  Your email" ""
+    git -C $Dest config user.name $GitName
+    if ($GitEmail) { git -C $Dest config user.email $GitEmail }
+  }
+
   git -C $Dest add -A 2>$null
 
-  if (AskYes "  Also auto-create a git repo inside each NEW project you build under projects/?" "Y") {
-    $ptxt = Get-Content -Raw -LiteralPath $ProfileFile
-    $note = "- **Git:** track the base with git; auto-run ``git init`` inside each new project created under ``projects/``."
-    if (-not $ptxt.Contains($note)) {
-      $ptxt = $ptxt.TrimEnd("`n") + "`n`n" + $note + "`n"
-      Write-Utf8NoBom $ProfileFile $ptxt
-      Say "  recorded 'auto-init new projects' in profile.md (the agent honors it)."
-    }
-  }
-
+  # The one question that actually matters to the person.
   Say ""
-  Say "  A REMOTE keeps a copy off your machine and syncs across your computers."
-  if (AskYes "  Want your base on all your machines (add a remote now)?" "N") {
-    $RemoteUrl = Ask "    Paste the git remote URL (e.g. git@github.com:you/your-base.git)" ""
-    if ($RemoteUrl) {
-      git -C $Dest remote remove origin 2>$null
-      git -C $Dest remote add origin $RemoteUrl
-      Say "    remote 'origin' set to $RemoteUrl"
-      Say "    (nothing pushed yet — commit when you're ready, then: git -C `"$Dest`" push -u origin HEAD)"
-    } else { Say "    no URL given — skipped the remote. You can add one later." }
-  } else { Say "  no remote — your base stays local only. You can add one anytime." }
+  Say "  Your base can live in one private place online. That is what lets you pick up"
+  Say "  on your phone what you did on your computer, and the other way round. It is"
+  Say "  private — only you can see it."
+  if (git -C $Dest remote get-url origin 2>$null) {
+    $RemoteSet = $true
+    Say "  Already set up — leaving it as it is."
+  } elseif (AskYes "  Set that up now?" "Y") {
+    $hasGh = [bool](Get-Command gh -ErrorAction SilentlyContinue)
+    if ($hasGh) { gh auth status *> $null; $ghReady = ($LASTEXITCODE -eq 0) } else { $ghReady = $false }
+    if ($ghReady) {
+      $RepoName = Ask "    What should it be called?" (Split-Path -Leaf $Dest)
+      gh repo create $RepoName --private --source $Dest --remote origin *> $null
+      if ($LASTEXITCODE -eq 0) {
+        $RemoteSet = $true
+        Say "    created a private place for your base and connected it."
+      } else { $AgentMustCreateRepo = $true }
+    } else { $AgentMustCreateRepo = $true }
+    if ($AgentMustCreateRepo) {
+      Say "    I can't create it from here — your AI agent will do it in a moment."
+    }
+  } else {
+    Say "  Skipped. Your base stays on this machine only: your phone and your other"
+    Say "  computers will not see any of it until this is set up."
+  }
 } else {
-  Say "Skipping git — nothing git-related will be touched until you ask."
+  Say "git is not installed, so your base cannot follow you between devices yet."
+  Say "Install git, then re-run this."
 }
 
 # ---------------------------------------------------------------------------
@@ -304,7 +380,12 @@ Check "knowledge index present" (Test-Path (Join-Path $Dest "knowledge/_index.md
 Check "activities index present" (Test-Path (Join-Path $Dest "activities/_index.md"))
 Check "cross-agent entry (AGENTS.md) present" (Test-Path (Join-Path $Dest "AGENTS.md"))
 Check "Claude entry (CLAUDE.md) present" (Test-Path (Join-Path $Dest "CLAUDE.md"))
-Check "projects/ folder beside the base" (Test-Path $Projects)
+Check "projects/ inside the base" (Test-Path $Projects)
+Check "projects index present" (Test-Path (Join-Path $Dest "projects/_index.md"))
+Check "keeping-in-step tool present" (Test-Path (Join-Path $Dest "tools/sync.py"))
+Check "sessions start by catching up" (Test-Path (Join-Path $Dest ".claude/settings.json"))
+Check "python3 available (needed to catch up automatically)" ([bool](Get-Command python3 -ErrorAction SilentlyContinue))
+if ($GitOn) { Check "your base has a private place online" ([bool](git -C $Dest remote get-url origin 2>$null)) }
 Check "your language recorded in profile.md" ((Get-Content -Raw -LiteralPath $ProfileFile) -match 'Language:')
 if ($ClaudeWired) {
   $gcm = Join-Path $HomeDir ".claude/CLAUDE.md"
@@ -324,15 +405,25 @@ if ($DocOk) { Say " Done. Your base is ready." } else { Say " Done, with a coupl
 Say "==============================================================="
 Say ""
 Say "Your base:      $Dest"
-Say "Your projects:  $Projects"
+Say "Your projects:  $Projects   (inside your base, so they travel with it)"
 Say "Talks to you:   $Lang"
 Say ""
 Say "What this means in plain terms:"
 Say "  - Launch your AI agent from your base folder and just talk to it."
 Say "  - It already knows how you want it to work (the canon is wired in)."
 Say "  - You never manage folders — the agent files knowledge and work for you."
-if ($GitOn) {
-  Say "  - Your base is under git. Ask the agent to 'save my work' whenever you want a checkpoint."
+if ($RemoteSet) {
+  Say "  - Everything is kept in one private place online, so your phone and your"
+  Say "    computer show the same thing. The agent saves it for you and will ask"
+  Say "    before it does."
+}
+if ($AgentMustCreateRepo) {
+  Say ""
+  Say "ONE STEP LEFT — for the AI agent reading this, not for the person:"
+  Say "  Create a PRIVATE repository for this base using your GitHub access, set it as"
+  Say "  'origin' in $Dest, and send the base to it. This is also the first check that"
+  Say "  your GitHub access works — if it does not, say so plainly and offer the"
+  Say "  alternative. Then run: python3 `"$Dest/tools/sync.py`" status"
 }
 Say ""
 Say "Personalize one file when you like: $ProfileFile"

@@ -25,23 +25,26 @@ mapping, a convention. Any project, any session.
 Check before creating any artifact: "does this fact already live somewhere? am I linking or copying?".
 Copying → stop, justify to the person. Conscious explicit exceptions allowed.
 
-## Home boundary — base vs project repo
+## Home boundary — the base vs a project
 
-> Applies if your setup has a planning base plus separate project repos (this etalon: a base
-> `harness/` alongside sibling `projects/`, each an independent repo). Single flat project → ignore.
+> The base is one repository and `projects/` lives inside it, so most facts have both homes on the
+> same disk. A project the person deliberately moved to its own repository is the exception, and it
+> is recorded as such in `projects/_index.md`.
 
 Decide **scope** first, then nature. **Order matters — cross-cutting / general first, else the fact
-settles in one repo and becomes invisible to others:**
+settles inside one project and becomes invisible to the others:**
 
 1. **A relation / contract BETWEEN projects** (even if it names one's code element) → **base**.
 2. **Externally observable behaviour / role / contract of a component** → **base** cross-cutting home.
 3. **A general practice applicable to MANY projects** → **base** engineering knowledge. ⚠️ dev-only ≠
-   automatically the repo. Test by applicability: "many projects — or specific to THIS one?" → many →
-   base; this one → repo.
+   automatically the project. Test by applicability: "many projects — or specific to THIS one?" →
+   many → base; this one → the project.
 4. **Only about ONE project's code / implementation** (its code element, a dev trap in its code, a
-   repo-specific convention) → **the repo's own `.claude/`**, filed by the nature of the fact.
+   convention that holds only there) → **that project's own `.claude/`** under
+   `projects/<name>/`, filed by the nature of the fact.
 5. **Not clear** → **ask the person**. Don't guess.
 
-**Home is by the nature of the fact, NOT where the session is open:** in a repo but cross-project →
-base; in the base but about one repo's internals → the repo. Repo not cloned locally → write to the
-base cross-cutting home with `<!-- internal, move to repo when cloned -->`.
+**Home is by the nature of the fact, NOT where the session is open:** working inside a project but
+the fact is cross-project → base; working in the base but the fact is about one project's internals
+→ that project. A project that lives in its own repository and is not present in this session →
+write to the base cross-cutting home with `<!-- internal, move to the project when present -->`.

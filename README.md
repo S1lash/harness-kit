@@ -8,7 +8,10 @@ survives sessions, and a concierge stance — built in from the first minute.
 **What it is, in plain language → https://share.s1lash.com/harness-kit**
 
 - Solo, cross-agent (Claude Code / Codex / Cursor), domain-agnostic.
-- Fork-and-own: no upstream, no updates to chase. From the clone on, it's yours to grow.
+- One base that follows you — the same thing on your computer, in your terminal, and on your
+  phone. Keeping those in step is the agent's job, not yours.
+- Yours from the clone on. The kit half stays updatable; everything you and your agent write is
+  never touched by an update (`doctrine/kit-ownership.md`).
 - The structure is for the *agent*. You never file, sort, or organize anything.
 
 ---
@@ -21,8 +24,11 @@ survives sessions, and a concierge stance — built in from the first minute.
    git clone <this-repo-url> my-base    # name it whatever you like
    ```
 2. **Tell your agent: "install this."** It asks a few plain questions — where, your
-   language, which agents you use, whether to use git — and wires everything up. Then you
-   just work.
+   language, which agents you use — sets up the one private place your base lives online, and
+   wires everything up. Then you just work.
+
+From then on it is one base: everything you build lives inside it, and the agent keeps your
+computer and your phone showing the same thing — it saves as you go and asks before it does.
 
 That's the whole onboarding. You don't need to understand the structure below — the agent
 does.
@@ -39,23 +45,31 @@ setup for them — do not make them learn the structure. Steps:
 2. **Run the installer** for the person's platform — `./install.sh` (macOS / Linux /
    Git-Bash) or `install.ps1` (Windows) — OR perform its steps conversationally if a shell
    is unavailable. The installer:
-   - asks **where** to place the base and **what to name** it (this clone is `harness/`;
-     a sibling `projects/` is created beside it for their apps);
+   - recognises whether this is a **new base** or **their existing base arriving on another
+     device** — in the second case it touches neither their content nor their history;
+   - asks **where** to place the base and **what to name** it. Everything they build lives in
+     `projects/` **inside** the base, so any surface that has the base has all of it;
    - asks the person's **language** and records it in `profile.md` — from then on you
      **converse with them in that language**, while all base content, code, and commits
      stay in English;
    - asks **which agents** they use and wires this canon into each one's global entry point
      (Claude `~/.claude/`, Codex, Cursor) so it is hot from any folder;
-   - asks about **git** (default yes; a remote is a separate opt-in) — if declined, touch
-     nothing git until asked;
-   - runs a **health check** (`/harness:doctor`).
-3. **Confirm** in plain language what you set up. Then work normally — you now own this
+   - sets up **the one private place their base lives online** — that is what makes their
+     phone and their computer show the same thing;
+   - runs a **health check** (`/harness-doctor`).
+3. **Create that private place if the installer could not** — it says so explicitly. Use your
+   GitHub access to create a **private** repository, set it as `origin`, and send the base to it.
+   This is also the first real test of that access: if you do not have it, say so plainly and say
+   what it costs them, rather than leaving it half-done.
+4. **Confirm** in plain language what you set up. Then work normally — you now own this
    structure: route facts to their homes, keep it healthy, grow it as the person works.
    Never push the structural burden back onto them.
 
 New session later? `CLAUDE.md` / `AGENTS.md` load the canon automatically; consult
 `knowledge/_index.md` on demand and `activities/_index.md` only on narrow "we did / last
-time / continue" signals — never load history by default.
+time / continue" signals — never load history by default. Every session opens by bringing the
+base up to date and closes by offering to save it — `rules/device-sync.md` is the contract, and
+you follow it whether or not the session-start hook ran.
 
 ---
 
@@ -63,11 +77,13 @@ time / continue" signals — never load history by default.
 
 | Path | What it is |
 |---|---|
-| `rules/` | The canon — 12 hard-rule files, loaded hot every session. Your standard. |
-| `doctrine/` | On-demand authoring meta — deep-knowledge, edit-checklist, skill-creation gate, knowledge/activities discipline, tool-vs-instrument. |
+| `rules/` | The canon — 13 hard-rule files, loaded hot every session. Your standard. |
+| `doctrine/` | On-demand authoring meta — deep-knowledge, edit-checklist, skill-creation gate, knowledge/activities discipline, tool-vs-instrument, kit-vs-person ownership. |
 | `knowledge/` | Durable understanding. Ships empty with the routing & growth discipline. |
 | `activities/` | Work that survives sessions. Agent-maintained index + strict anti-bias rule. |
-| `tools/` | Executable automation (scripts, CLIs, the MCP wrapper). Ships empty. |
+| `projects/` | The things you build — **inside** the base, so they travel with it. Agent-maintained index. |
+| `tools/` | Executable automation, `sync.py` included (what keeps your devices in step). |
+| `.claude/` | The session wiring: the catch-up hook and the kit's commands. |
 | `plugins/frontend-crafter/` | Bundled: an anti-slop frontend-design skill, ready to use. |
 | `profile.md` | The one personal file — *who you are*, grown carefully by the agent. Not a habit tracker. |
 | `install.sh` · `install.ps1` | The conversational, cross-platform installer. |
