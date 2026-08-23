@@ -209,6 +209,49 @@ class UpdateEndToEndTests(unittest.TestCase):
         self.assertEqual((self.base / "seed.md").read_text(), "pristine seed\n")
         self.assertIn("a seed this base never received", done.stdout)
 
+    def test_a_declared_move_is_carried_by_the_update_itself(self):
+        # End to end: the kit declares it, the base takes the update, the path has moved. The
+        # declaration is read from the manifest that arrives in the SAME run — which is why it is
+        # data and not code in the updater, whose own new code would take effect an update late.
+        declared = MANIFEST.replace(
+            "retired:",
+            "migrations:\n  - move pointers -> knowledge/pointers | your notes may name the old place\n\nretired:")
+        write(self.kit, ".engine-manifest.yml", declared)
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "declare the move")
+        write(self.base, "pointers/stack.md", "theirs\n")
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "their pointers")
+
+        done = run_update(self.base)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertFalse((self.base / "pointers").exists())
+        self.assertEqual((self.base / "knowledge/pointers/stack.md").read_text(), "theirs\n")
+        self.assertIn("may name the old place", done.stdout)
+
+        # And it converges: a second update has nothing left to carry.
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "saved")
+        again = run_update(self.base)
+        self.assertNotIn("moved pointers", again.stdout)
+
+    def test_the_base_follows_the_kit_when_the_kit_publishes_a_new_address(self):
+        # The remote lives in git config, which no manifest section reaches. Publishing the new
+        # address a release BEFORE the move is the only way a base can follow: by the time the kit
+        # moves, everyone is already pointed at where it went.
+        moved = MANIFEST.replace("version: 1.0.0",
+                                 "version: 1.0.0\n\nkit_remote: https://example.invalid/moved")
+        write(self.kit, ".engine-manifest.yml", moved)
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "publish the new address")
+
+        done = run_update(self.base)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(
+            git(self.base, "remote", "get-url", "harness-kit").stdout.strip(),
+            "https://example.invalid/moved")
+        self.assertIn("the kit now lives at", done.stdout)
+
     def test_a_second_run_changes_nothing_and_says_so(self):
         run_update(self.base)
         git(self.base, "add", "-A")
