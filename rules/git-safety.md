@@ -10,6 +10,18 @@ Any project, any session.
   loss of unmerged work, and any other `--force` flag.
 - **Why:** `--force` disables git's protection → **silent, irreversible data loss** (uncommitted
   WIP, unmerged branches) — exactly what git normally won't let you erase.
+## Discarding uncommitted work needs the same approval as `--force`
+
+`git checkout -- <path>`, `git restore <path>` and `git stash drop` carry no scary flag and are
+not refused by git, yet they destroy uncommitted work exactly as irreversibly as `--hard` does —
+which is what makes them worse: nothing announces the loss, and the file simply reads as it did
+before the work existed. Treat them as the force list above: the person's explicit approval in the
+moment, or a commit first.
+
+**Breaking something on purpose — a mutation check, a "does this test actually fail" experiment —
+is committed BEFORE it is broken, never reverted afterwards.** Reverting is the moment the
+unrelated work sitting beside it disappears.
+
 - **The default is NON-force.** Run the plain variant. Git refused because something is protected (a
   dirty worktree, an unmerged branch) — that is a STOP signal, not an obstacle to bypass: show the
   person the reason (e.g. `git status` of the target), decide together.
