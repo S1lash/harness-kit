@@ -43,9 +43,13 @@ def trespassing_paths(retired: list[str], excluded: list[str]) -> list[str]:
     return [p for p in retired if any(manifest_lib.covered_by(e, p) for e in excluded)]
 
 
-def run(root: Path, dry_run: bool = False) -> list[str]:
-    """Delete every listed path that is present. Returns what was (or would be) removed."""
-    retired = manifest_lib.read_section("retired", root)
+def run(root: Path, dry_run: bool = False, entries: list[str] | None = None) -> list[str]:
+    """Delete every listed path that is present. Returns what was (or would be) removed.
+
+    `entries` lets a caller supply the section from a manifest other than the one on disk — what a
+    dry-run needs, since the deletions it must preview are declared by the incoming release.
+    """
+    retired = manifest_lib.read_section("retired", root) if entries is None else entries
     if not retired:
         return []
     trespassing = trespassing_paths(retired, manifest_lib.read_section("exclude", root))

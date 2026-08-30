@@ -48,10 +48,14 @@ class Move:
         return "Move(%r -> %r)" % (self.source, self.destination)
 
 
-def parse(root: Path) -> list:
-    """Read the declared operations. An unknown verb stops the run rather than being skipped."""
+def parse(root: Path, entries: list | None = None) -> list:
+    """Read the declared operations. An unknown verb stops the run rather than being skipped.
+
+    `entries` lets a caller supply the section from a manifest other than the one on disk — what
+    a dry-run needs, since the moves it must preview are declared by the release being previewed.
+    """
     operations = []
-    for entry in manifest_lib.read_section("migrations", root):
+    for entry in (manifest_lib.read_section("migrations", root) if entries is None else entries):
         body, _, note = entry.partition(NOTE_SEPARATOR)
         verb, _, rest = body.strip().partition(" ")
         if verb != MOVE:
@@ -83,9 +87,9 @@ def _guard(root: Path, operations: list) -> None:
                 % (move.destination, move.source))
 
 
-def run(root: Path, dry_run: bool = False) -> list:
+def run(root: Path, dry_run: bool = False, entries: list | None = None) -> list:
     """Carry out every declared operation that still has something to do."""
-    operations = parse(root)
+    operations = parse(root, entries)
     if not operations:
         return []
     _guard(root, operations)

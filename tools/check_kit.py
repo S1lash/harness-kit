@@ -75,11 +75,15 @@ def check_retired(root, engine, template, exclude, retired, fail):
         if any(manifest_lib.covered_by(e, entry) for e in exclude):
             fail("retired path falls under exclude: %s" % entry,
                  "That is the person's space. The updater refuses the whole sweep over this.")
-        covering = [e for e in engine + template
-                    if manifest_lib.covered_by(e if e.endswith("/") else e, entry)]
-        for cover in covering:
-            fail("retired path is still covered by %s: %s" % (cover, entry),
-                 "It would be restored by the checkout and deleted in the same run.")
+        # Coverage by a DIRECTORY entry is the ordinary case, not a fault: retiring a file from
+        # inside `rules/` or `doctrine/` is exactly what the section is for. `git checkout <ref>
+        # -- <dir>` writes what the ref holds and never recreates a file the ref does not have,
+        # so there is no restore-then-delete loop to warn about. The real condition — the path
+        # still shipping — is the first check above, and `check_paths_exist` refuses an
+        # individually-listed engine entry that no longer exists on disk.
+        for cover in [e for e in engine + template if e == entry]:
+            fail("retired path is still listed on its own under %s: %s" % (cover, entry),
+                 "One manifest cannot both ship a path and drop it. Remove the listing.")
 
 
 def check_versions(root, fail):

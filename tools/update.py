@@ -150,6 +150,26 @@ def mode_self_heal(root: Path, remote: str, branch: str, argv: list) -> int:
     return subprocess.run([sys.executable, str(Path(__file__).resolve())] + rerun).returncode
 
 
+def incoming_sections(ref: str, root: Path) -> dict:
+    """What the manifest being SHIPPED declares, not what this base already knew.
+
+    The manifest is itself one of the paths an update replaces, so anything a release declares —
+    a new engine path, a move, a retirement, a seed — is invisible to a run that only reads the
+    copy on disk. Falls back to the local manifest when the ref carries none, which is the shape
+    of a base whose kit remote points at something that is not the kit.
+    """
+    text = ref_read_path(ref, manifest_lib.MANIFEST_NAME, root)
+    sections = {}
+    for name in ("engine", "template", "migrations", "retired"):
+        if text:
+            sections[name] = [p.rstrip("/") if name == "engine" else p
+                              for p in manifest_lib.parse_section(name, text)]
+        else:
+            sections[name] = [p.rstrip("/") if name == "engine" else p
+                              for p in manifest_lib.read_section(name, root)]
+    return sections
+
+
 def dirty_engine_paths(root: Path, ref: str, engine_paths: list) -> list:
     """Kit paths carrying uncommitted local edits.
 
@@ -259,21 +279,23 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
     version_before = read_local_version(root)
     version_upstream = (ref_read_path(ref, VERSION_FILE, root) or "").strip()
 
+    incoming = incoming_sections(ref, root)
+
     if dry_run:
         print("%s dry-run — would replace these from %s:" % (PREFIX, ref))
-        for relpath in engine_paths:
+        for relpath in sorted(set(engine_paths) | set(incoming["engine"])):
             if not ref_has_path(ref, relpath, root):
                 continue
             # `-R` reverses the direction: without it this reads ref -> here,
             # so everything the update ADDS renders as a deletion.
             stat = git_ok("diff", "--stat", "-R", ref, "--", relpath, root=root)
             print("  - %s%s" % (relpath, "" if not stat else "\n      " + stat.replace("\n", "\n      ")))
-        for relpath in manifest_lib.read_section("template", root):
+        for relpath in incoming["template"]:
             if not (root / relpath).exists() and ref_has_path(ref, relpath, root):
                 print("  + add %s (a seed this base never received)" % relpath)
-        for move in migrate_lib.run(root, dry_run=True):
+        for move in migrate_lib.run(root, dry_run=True, entries=incoming["migrations"]):
             print("  > move %s to %s" % (move.source, move.destination))
-        removed = retire_lib.run(root, dry_run=True)
+        removed = retire_lib.run(root, dry_run=True, entries=incoming["retired"])
         for relpath in removed:
             print("  - drop %s (the kit no longer has it)" % relpath)
         print("%s dry-run: %s -> %s. Nothing applied." % (PREFIX, version_before or "?",
@@ -282,14 +304,19 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
 
     seeded = seed_missing_templates(root, ref)
     resolved, absent, changed = 0, 0, 0
-    changed_paths = []
-    for relpath in engine_paths:
+    changed_paths, added_paths = [], []
+
+    # A path this release ADDS to engine: is not in the list read from the manifest that was on
+    # disk when the run began — that manifest is itself one of the paths being replaced. Without
+    # this the new file lands one whole update late, and the run that ships it says nothing.
+    newly_declared = [p for p in incoming["engine"] if p not in engine_paths]
+    for relpath in engine_paths + newly_declared:
         if not ref_has_path(ref, relpath, root):
             absent += 1
             continue
         if git("diff", "--quiet", ref, "--", relpath, root=root)[0] != 0:
             changed += 1
-            changed_paths.append(relpath)
+            (added_paths if relpath in newly_declared else changed_paths).append(relpath)
         git("checkout", ref, "--", relpath, root=root)
         resolved += 1
 
@@ -304,21 +331,26 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
             "Recover with: python3 tools/update.py --self-heal",
         )
 
+    # The two passes are independent, so one refusing must not cancel the other. Returning on the
+    # first refusal left every declared deletion undone for as long as an unrelated move stayed
+    # blocked — and said nothing about it, so nobody could know retirement had been skipped.
+    carried, removed, blocked = [], [], []
     try:
         carried = migrate_lib.run(root)
     except migrate_lib.MigrationRefused as refusal:
-        return fail("a declared change could not be carried out: %s" % refusal,
-                    "Nothing was moved. The kit paths above are already in place; running the",
-                    "update again is safe.")
+        blocked.append("a declared change could not be carried out: %s" % refusal)
 
     try:
         removed = retire_lib.run(root)
     except retire_lib.RetirementRefused as refusal:
-        return fail(
-            "refusing to drop paths that belong to the person, not the kit:",
-            *(["  %s" % p for p in refusal.trespassing]
-              + ["Nothing was deleted. The manifest's retired: section is wrong."]),
-        )
+        blocked.append("refusing to drop paths that belong to the person, not the kit: %s"
+                       % ", ".join(refusal.trespassing))
+
+    if blocked:
+        return fail(*(blocked + [
+            "The kit paths above are already in place and anything that COULD be carried out was.",
+            "Nothing was moved or deleted that is named here; running the update again is safe.",
+        ]))
 
     version_after = read_local_version(root)
     if version_upstream and version_after != version_upstream:
@@ -337,6 +369,8 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
     # object to, and `.claude/settings.json` is a kit path they may well have edited.
     for relpath in changed_paths:
         print("  ~ replaced %s" % relpath)
+    for relpath in added_paths:
+        print("  ~ replaced %s (a kit path this release introduced)" % relpath)
     for relpath in seeded:
         print("  + added %s (a seed this base never received)" % relpath)
     for relpath in removed:

@@ -35,12 +35,22 @@ def manifest_path(root: Path | None = None) -> Path:
 
 
 def read_section(section: str, root: Path | None = None) -> list[str]:
-    """One list-shaped section, in document order, comments and blanks dropped."""
+    """One list-shaped section of the manifest on disk."""
+    return parse_section(section, manifest_path(root).read_text(encoding="utf-8"))
+
+
+def parse_section(section: str, text: str) -> list[str]:
+    """One list-shaped section of any manifest text, in document order.
+
+    Separated from the file read so the same parser serves the manifest a base has and the one a
+    release is bringing it — an update has to be able to see what the INCOMING manifest declares,
+    not only what the base already knew.
+    """
     if section not in LIST_SECTIONS:
         raise ValueError("%r is not a list-shaped manifest section" % section)
     entries: list[str] = []
     current: str | None = None
-    for raw in manifest_path(root).read_text(encoding="utf-8").splitlines():
+    for raw in text.splitlines():
         line = raw.rstrip()
         if not line or line.lstrip().startswith("#"):
             continue
