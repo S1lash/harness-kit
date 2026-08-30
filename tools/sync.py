@@ -54,6 +54,7 @@ def read_state():
         "base": str(BASE),
         "is_repo": git_ok("rev-parse", "--is-inside-work-tree") == "true",
         "enclosing": None,
+        "nested_repos": [],
         "branch": None,
         "remote_url": None,
         "upstream": None,
@@ -64,6 +65,7 @@ def read_state():
         "identity": True,
         "detached": False,
         "branches": 1,
+        "unreadable": None,
     }
     if not state["is_repo"]:
         return state
@@ -88,8 +90,23 @@ def read_state():
     listing = git_ok("for-each-ref", "--format=%(refname:short)", "refs/heads/") or ""
     state["branches"] = len([line for line in listing.splitlines() if line.strip()])
 
-    porcelain = git_ok("status", "--porcelain") or ""
+    code, porcelain, err = git("status", "--porcelain")
+    if code != 0:
+        # A failed `status` used to read as a CLEAN base: `git_ok` returns None for both, and
+        # `or ""` then made "cannot tell" indistinguishable from "nothing to save". The
+        # session-start path would go on to fast-forward on that reading.
+        state["unreadable"] = err.strip() or "git could not read this base"
+        return state
     state["unsaved"] = [line[3:] for line in porcelain.splitlines() if line]
+
+    # A project that is its own repository is committed as a gitlink: the base records a commit
+    # id and none of the content, so a clone — the phone — gets an empty directory. Nothing about
+    # the save says so, which is exactly the silent divergence this whole rule exists to prevent.
+    projects = BASE / "projects"
+    if projects.is_dir():
+        state["nested_repos"] = sorted(
+            "projects/%s" % child.name for child in projects.iterdir()
+            if child.is_dir() and (child / ".git").exists())
     return state
 
 
@@ -114,6 +131,12 @@ def describe(state, action_taken, directive):
     lines = ["%s base: %s" % (PREFIX, state["base"])]
     if not state["is_repo"]:
         lines.append("state: this folder is not tracked at all — nothing can travel between surfaces")
+        lines.append("YOU MUST: %s" % directive)
+        return "\n".join(lines)
+
+    if state["unreadable"]:
+        lines.append("state: UNREADABLE — git could not report on this base")
+        lines.append("       %s" % state["unreadable"])
         lines.append("YOU MUST: %s" % directive)
         return "\n".join(lines)
 
@@ -151,6 +174,10 @@ def describe(state, action_taken, directive):
     else:
         lines.append("sync: in step with the remote")
 
+    if state["nested_repos"]:
+        lines.append("projects kept separately: %s" % ", ".join(state["nested_repos"]))
+        lines.append("       their contents do NOT travel with this base — a clone gets an "
+                     "empty folder")
     if state["branches"] > 1:
         lines.append("branches: %d — a base has one; the extra ones are invisible on a phone"
                      % state["branches"])
@@ -167,6 +194,10 @@ def directive_for(state):
     if not state["is_repo"]:
         return ("tell the person their base is not being kept anywhere and offer to set that up "
                 "(plain language — no git words)")
+    if state["unreadable"]:
+        return ("STOP — do not save or pull. git cannot read this base, so nothing here can be "
+                "trusted, and an empty answer would read as 'nothing to save'. Show the person "
+                "the reason above in their words and fix it before anything else")
     if state["enclosing"]:
         return ("STOP — do not save. This base has no history of its own and sits inside another "
                 "project's, so everything here would be saved into THAT project and sent wherever "
@@ -186,6 +217,11 @@ def directive_for(state):
         return "run 'pull' to put both sides together, resolve anything overlapping by reading it"
     if state["behind"]:
         return "run 'pull' to bring the base up to date, then say nothing about it"
+    if state["nested_repos"]:
+        return ("save as normal, then tell the person once, in their words, that what is inside "
+                "%s is kept on its own and does not travel with the base — so it will not be on "
+                "their phone. Offer to set that up separately"
+                % ", ".join(state["nested_repos"]))
     if state["unsaved"] or state["ahead"]:
         return ("propose saving at the end of this chunk of work — earlier if this copy will not "
                 "survive the session")
@@ -214,7 +250,7 @@ def mode_status(mutate_when_safe):
 
 def mode_pull():
     state = read_state()
-    if state["enclosing"] or not state["is_repo"] or not state["remote_url"]:
+    if state["unreadable"] or state["enclosing"] or not state["is_repo"] or not state["remote_url"]:
         print(describe(state, None, directive_for(state)))
         return 1
     if state["unsaved"]:
@@ -280,7 +316,7 @@ def mode_save(message):
     state = read_state()
     # Refuse before anything is staged: `git add -A` here would stage the enclosing repository's
     # whole worktree, and the push that follows would send it wherever that repository goes.
-    if state["enclosing"] or not state["is_repo"]:
+    if state["unreadable"] or state["enclosing"] or not state["is_repo"]:
         print(describe(state, None, directive_for(state)))
         return 1
     if not state["identity"]:

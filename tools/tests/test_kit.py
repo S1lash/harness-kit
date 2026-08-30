@@ -107,6 +107,67 @@ class ManifestReaderTests(unittest.TestCase):
             manifest_lib.read_section("nonsense", self.root)
 
 
+class SilentDivergenceTests(unittest.TestCase):
+    """Two states the base could be in while reporting that everything was fine."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name) / "base"
+        (self.base / "projects").mkdir(parents=True)
+        write(self.base, "knowledge/note.md", "theirs\n")
+        install_tools(self.base)
+        shutil.copy2(KIT_ROOT / "tools" / "sync.py", self.base / "tools")
+        git(self.base, "init", "-q", "-b", "main")
+
+    def run_sync(self, *args):
+        return subprocess.run([sys.executable, str(self.base / "tools" / "sync.py"), *args],
+                              capture_output=True, text=True, cwd=str(self.base))
+
+    def test_a_project_that_is_its_own_repository_is_named(self):
+        """A gitlink records a commit id and no content, so a clone gets an empty folder.
+
+        The base's whole promise is that what is inside it travels. Nothing said otherwise: the
+        save reported success, and the phone found nothing there.
+        """
+        app = self.base / "projects" / "myapp"
+        app.mkdir()
+        write(app, "main.py", "print('hi')\n")
+        git(app, "init", "-q", "-b", "main")
+        git(app, "add", "-A")
+        git(app, "commit", "-qm", "the app")
+        # A base with no remote has a louder problem, and its directive correctly wins. Give it
+        # one so the nested-repository directive is the one under test.
+        remote = Path(self.tmp.name) / "their-remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "their base")
+        git(self.base, "remote", "add", "origin", str(remote))
+        git(self.base, "push", "-q", "-u", "origin", "main")
+
+        done = self.run_sync("status")
+        self.assertIn("projects kept separately: projects/myapp", done.stdout)
+        self.assertIn("do NOT travel with this base", done.stdout)
+        self.assertIn("does not travel with the base", done.stdout, "the directive must say so")
+
+    def test_a_base_with_no_nested_repository_says_nothing_about_it(self):
+        done = self.run_sync("status")
+        self.assertNotIn("projects kept separately", done.stdout)
+
+    def test_a_base_git_cannot_read_is_not_reported_as_clean(self):
+        """`git_ok` returned None for a failure and for an empty result alike.
+
+        `porcelain or ""` then made "cannot tell" identical to "nothing to save", and
+        session-start would fast-forward on that reading.
+        """
+        (self.base / ".git" / "index").write_bytes(b"CORRUPT")
+        done = self.run_sync("status")
+        self.assertIn("UNREADABLE", done.stdout)
+        self.assertIn("STOP", done.stdout)
+        saving = self.run_sync("save", "anything")
+        self.assertNotEqual(saving.returncode, 0, "it saved over a base it could not read")
+
+
 class InstallerSafetyTests(unittest.TestCase):
     """Two ways the installer reached past what it was pointed at.
 
