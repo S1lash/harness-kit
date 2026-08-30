@@ -1,5 +1,5 @@
 ---
-description: Report-only health check of this base. Verifies the canon is wired hot and named identically for every agent, the indexes exist, the base can actually reach the person's other devices, every local MCP server is wrapped, and profile.md has a language. Reports PASS / WARN / FAIL and fixes nothing.
+description: Report-only health check of this base. Verifies the canon is wired hot and named identically for every agent, the indexes exist, the base can actually reach the person's other devices, the kit half is updatable and portable, every local MCP server is wrapped, and profile.md has a language. Reports PASS / WARN / FAIL and fixes nothing.
 ---
 
 # /harness-doctor
@@ -40,19 +40,24 @@ relevant flow fixes what it surfaces.
    `.claude-plugin/plugin.json`. A base with no kit remote can never receive a fix — FAIL. A
    version mismatch between the three is a FAIL: the updater's own post-condition will refuse the
    next update.
-9. **Nothing personal sits in a kit path.** Spot-check the paths the manifest lists under
-   `engine:` for anything the person or their agent wrote — it survives exactly until the next
-   update (`doctrine/kit-ownership.md`). Any find is a FAIL naming the file and its real home.
-10. **Indexes present.** `knowledge/_index.md`, `activities/_index.md`, `tools/_index.md`,
-    `tools/_kit.md`,
-   `projects/_index.md` exist and parse.
-11. **MCP wrapped.** Every local MCP server (Docker / npx / native) in the agent's MCP config routes
-   through `tools/mcp-wrapper.js`. An unwrapped local server is a FAIL
-   (`doctrine/tool-vs-instrument.md`). Remote / SSE / URL servers are exempt.
-12. **Profile ready.** `profile.md` exists and has a `Language:` value.
-13. **No drift.** Anything the canon requires but the base lacks (a rule file missing, a dead
-   pointer, a person's fact sitting in a kit-owned path — `doctrine/kit-ownership.md`) → WARN with
-   the specific gap.
+9. **The kit half still runs everywhere.** `python3 tools/check_portability.py`. Every file the
+   kit ships is checked against the machine-checkable clauses of `rules/cross-platform.md` — a
+   bash 4 builtin, a GNU-only flag, a hardcoded path from one machine, text read without an
+   encoding, a native command that a stop-on-error PowerShell turns into a crash. A finding here is
+   a FAIL naming the file, line and clause: something in a kit path was edited into a shape that
+   works on this machine and nowhere else, and it will be replaced at the next update anyway.
+10. **Nothing personal sits in a kit path.** Spot-check the paths the manifest lists under
+    `engine:` for anything the person or their agent wrote — it survives exactly until the next
+    update (`doctrine/kit-ownership.md`). Any find is a FAIL naming the file and its real home.
+11. **Indexes present.** `knowledge/_index.md`, `activities/_index.md`, `tools/_index.md`,
+    `tools/_kit.md` and `projects/_index.md` exist and parse.
+12. **MCP wrapped.** Every local MCP server (Docker / npx / native) in the agent's MCP config routes
+    through `tools/mcp-wrapper.js`. An unwrapped local server is a FAIL
+    (`doctrine/tool-vs-instrument.md`). Remote / SSE / URL servers are exempt.
+13. **Profile ready.** `profile.md` exists and has a `Language:` value.
+14. **No drift.** Anything the canon requires but the base lacks (a rule file missing, a dead
+    pointer, a person's fact sitting in a kit-owned path — `doctrine/kit-ownership.md`) → WARN with
+    the specific gap.
 
 ## Output
 

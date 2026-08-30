@@ -10,6 +10,76 @@
 > **Present-not-history EXCEPTION** (`rules/present-not-history.md`): the evolution and rationale of
 > a decision IS the content here. Everywhere else states only the current state and links here.
 
+## 2026-08-30 — Portable scope is read from the manifest, not judged
+
+**Chosen:** `rules/cross-platform.md` derives its two tiers from `.engine-manifest.yml`. Tier 1 is
+`engine:` plus `template:` minus `exclude:` — exactly what an update writes onto somebody else's
+disk — and is held to the letter, gated by `tools/check_portability.py`. Tier 2 is everything the
+person wrote, held to the spirit and never gated.
+
+**Alternatives considered:** a hand-kept list of "files that must be portable"; a marker comment in
+each file declaring its tier; holding the whole repository to one standard.
+
+**Why:** the distinction that matters is already recorded, and recording it twice is two truths that
+diverge. A second list would need updating in the same edit as the manifest and would silently not
+be; a marker comment puts the answer in the file being judged, which is exactly where a wrong answer
+is least visible. Holding everything to one standard is the failure both directions: gate the
+person's own scratch script and the gate becomes noise they route around, exempt the kit's installer
+and the rule stops covering the only files that reach a stranger.
+
+The consequence worth naming: adding a path to `engine:` silently widens what the gate checks. That
+is intended — the manifest entry IS the decision to ship it — but it means a release can fail on a
+file the author never thought of as shipped. That failure is correct and is the point.
+
+## 2026-08-30 — Canon clauses have IDs, not section numbers
+
+**Chosen:** the machine-checkable clauses of `rules/cross-platform.md` are named `[CP-1]`..`[CP-6]`
+in the prose, cited by every rule in `tools/lib/portability.py`, and bound in both directions by
+`check_clause_ids` in `check_kit.py`: a clause the canon defines that no mechanism enforces fails,
+and a gate rule citing a clause nobody wrote fails.
+
+**Alternatives considered:** citing section headings; citing section numbers; citing nothing and
+letting each gate message stand alone.
+
+**Why:** a gate has to be able to say which promise was broken, or the person reading the failure
+has only a regex and no contract. Headings and numbers both move — `present-not-history.md` requires
+rewriting a rule whole, so paragraphs are expected to move — and a citation that rots points
+confidently at the wrong paragraph, which is worse than none. An ID is a name the rewrite carries
+along.
+
+The half that is easy to miss is the reverse direction. Enforcement drifting out from under a clause
+is the failure nobody notices: the rule still reads as guarded, the gate still passes, and the only
+evidence is a check that no longer exists. Binding both ways makes deleting a rule from the scanner
+a release failure until the clause is deleted from the canon too.
+
+**Not generalized further on purpose.** Only `cross-platform.md` carries IDs today, because only its
+clauses are machine-checkable. A rule about judgement gains nothing from a citable name and would
+gain a maintenance obligation.
+
+## 2026-08-30 — No symlinks anywhere in the kit
+
+**Chosen:** neither installer creates a symbolic link. Global agent wiring is a text block written
+into the runtime's own entry point (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, Cursor user rules)
+naming the base by path; everything else is a copy.
+
+**Alternatives considered:** linking the entry points at the base, which is what the kit did;
+linking on POSIX and copying on Windows; keeping the link and documenting the Git Bash environment
+variable that makes it real.
+
+**Why:** a symlink is four different objects. Git Bash writes a text stub containing a path unless
+`MSYS=winsymlinks:nativestrict` is set, so the file looks right and reads as garbage. Windows needs
+Developer Mode or elevation to create one at all. A dangling link is invisible to PowerShell's
+`Test-Path`, so a repair step reports the target missing and creates it beside the broken link.
+`Remove-Item` on a directory link deletes the directory it points at. Each of those is a silent
+half-install on a machine the author cannot see, and the person hits it as "my agent stopped knowing
+about my base" with nothing to read.
+
+The thing given up is real and small: an edit to a linked file used to be live everywhere at once,
+and a copy has to be rewritten by the updater. That is what the updater is for — it replaces kit
+paths wholesale on every run — so the property was already being delivered by another mechanism.
+A platform-agnostic kit does not get to depend on the one filesystem primitive that means something
+different on each platform.
+
 ## 2026-08-23 — Safety is a sibling of git-safety, and authority does not relax it
 
 **Chosen:** `rules/safety.md` — a hot rule covering irreversible and outward-facing actions that

@@ -76,9 +76,9 @@ to `main`.
 
 Before shipping, run `python3 -m unittest discover -s tools/tests` and
 `python3 tools/check_kit.py --authoring`. The tests cover the machinery, the gate covers the
-declaration. It fails on every mistake that would
-otherwise only surface on somebody else's machine, where nobody can see it and they cannot diagnose
-it:
+declaration and — through `check_portability.py`, which it calls — the shape of every file that
+leaves this repository. It fails on every mistake that would otherwise only surface on somebody
+else's machine, where nobody can see it and they cannot diagnose it:
 
 - a declared path that does not exist, or one owned by two sections at once;
 - a file removed from inside a kit directory without a `retired:` line — git ADDS and UPDATES on
@@ -87,7 +87,11 @@ it:
 - a tool in `tools/` declared nowhere, which therefore reaches nobody;
 - a rule missing from the one canon list, or that list restated in `CLAUDE.md`;
 - kit paths changed without `VERSION` moving (nobody's daily check notices), or `VERSION` moved
-  without `CHANGELOG.md` (the update has nothing to tell them).
+  without `CHANGELOG.md` (the update has nothing to tell them);
+- a shipped file that would behave differently on Windows or on macOS — a bash 4 builtin, a
+  GNU-only flag, a path from the author's own disk, text read through whatever encoding the
+  platform defaults to. This one is why the gate exists at all: those faults are invisible to the
+  author by construction, because the author's machine is the one they work on.
 
 The structural half of the same gate runs on any base and is what `/harness-doctor` calls, and so
 do the tests: a base can prove its own machinery works without its owner knowing what any of it is.

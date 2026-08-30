@@ -155,7 +155,6 @@ One canon list instead of two, and a gate that catches a bad release before anyo
   moved without `CHANGELOG.md`. Every one of them is a mistake that otherwise surfaces only on
   somebody else's machine.
 
-
 - `projects/` moved **inside** the base. A session opened from a fresh clone gets one repository;
   anything beside it does not exist there. `projects/_index.md` maps them, including a project the
   person deliberately gave its own repository. `rules/sot-dry-srp.md` home boundary and the
@@ -181,6 +180,32 @@ One canon list instead of two, and a gate that catches a bad release before anyo
   offered a move in.
 - Add `doctrine/kit-ownership.md`: which paths an update may replace and which it must never touch.
   This replaces the previous fork-and-own stance in `README.md`.
+
+## 2026-08-30
+
+The platform layer: the cross-platform rule stops depending on somebody remembering it.
+
+- `rules/cross-platform.md` rewritten. Scope is no longer a judgement call — tier 1 is exactly what
+  `.engine-manifest.yml` ships (`engine:` + `template:`, minus `exclude:`) and is held to the letter
+  because it reaches machines nobody here will ever see; tier 2 is the person's own space, held to
+  the spirit. Its clauses are named `[CP-1]`..`[CP-6]` rather than numbered by position: a gate that
+  cites "section 2.2" is wrong the first time a paragraph moves, and a contract that can be cited
+  from code has to have a name that does not drift.
+- Add `tools/lib/portability.py` and `tools/check_portability.py` — the machine-checkable half of
+  those clauses, run over tier 1 by `check_kit.py` and therefore by `/harness-doctor` on any base.
+  Rules match code and never prose: comments and docstrings are blanked, markdown is read only
+  inside language-tagged fences, so the rule file that *lists* every banned construct is not itself
+  a finding. The one escape is an inline `portability-ok: <reason>` with the reason mandatory —
+  there is no allowlist file, because an exemption nobody reads is how a rule quietly stops
+  applying.
+- `check_kit.py` binds clause IDs in both directions: a clause the canon defines that nothing
+  enforces, and a gate rule citing a clause nobody wrote, are both failures. Neither was previously
+  visible, and the first is the shape of a rule everyone believes is guarded.
+- The symlink machinery is gone from `install.sh` and `install.ps1`. It was the one mechanism that
+  could not be made to behave the same on all three platforms — Git Bash writes a text stub unless
+  an environment variable is set, a dangling link is invisible to `Test-Path`, and `Remove-Item` on
+  a directory link deletes through it — and nothing in the kit needed it. A copy is understood by
+  everyone; a link that is a file on one platform is not.
 
 ## 2026-07-16
 
