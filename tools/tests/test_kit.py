@@ -107,6 +107,102 @@ class ManifestReaderTests(unittest.TestCase):
             manifest_lib.read_section("nonsense", self.root)
 
 
+class InstallerSafetyTests(unittest.TestCase):
+    """Two ways the installer reached past what it was pointed at.
+
+    Both were demonstrated end to end: the legacy-projects migration absorbed the person's own
+    `~/projects` — an ordinary folder name, nothing to do with this kit — and committed a live
+    API key with it; and a blank email left a base with every file staged and no history while
+    the installer printed thirteen OK lines and "Done".
+    """
+
+    def source(self):
+        source = Path(self.tmp.name) / "src"
+        shutil.copytree(KIT_ROOT, source, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        return source
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.home = Path(self.tmp.name) / "home"
+        self.home.mkdir()
+
+    def install(self, answers):
+        done = subprocess.run(["bash", str(self.source() / "install.sh")],
+                              input=answers, capture_output=True, text=True,
+                              cwd=str(self.tmp.name),
+                              env={**os.environ, "HOME": str(self.home),
+                                   "HARNESS_ANSWERS_ON_STDIN": "1"})
+        return done
+
+    def test_an_ordinary_projects_folder_is_left_alone(self):
+        # The trigger is a marker an old harness leaves, never the folder's name.
+        theirs = self.home / "projects" / "client-work"
+        theirs.mkdir(parents=True)
+        (theirs / ".env").write_text("STRIPE_KEY=sk_live_real\n", encoding="utf-8")
+        done = self.install("%s\nharness\nEnglish\nn\nn\nn\nn\nElena\ne@example.invalid\nn\n"
+                            % self.home)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertNotIn("an earlier harness left it there", done.stdout)
+        self.assertTrue((theirs / ".env").exists(), "the person's own folder was absorbed")
+        # And it must not have been committed into the base either.
+        tracked = subprocess.run(["git", "-C", str(self.home / "harness"), "ls-files"],
+                                 capture_output=True, text=True).stdout
+        self.assertNotIn("client-work", tracked, "the person's unrelated work was committed")
+
+    def test_a_former_harness_projects_folder_is_offered_and_defaults_to_no(self):
+        legacy = self.home / "projects"
+        legacy.mkdir(parents=True)
+        (legacy / "_index.md").write_text("# projects\n", encoding="utf-8")
+        # A name the base does not already carry: `_index.md` exists on both sides, so the
+        # migration skips it and it can never show whether the move happened.
+        (legacy / "old-work.md").write_text("from the previous base\n", encoding="utf-8")
+        # The migration question comes BEFORE the language one; an empty answer takes the
+        # default, and the default has to be "leave it where it is".
+        done = self.install("%s\nharness\n\nEnglish\nn\nn\nn\nn\nElena\ne@example.invalid\nn\n"
+                            % self.home)
+        self.assertIn("an earlier harness left it there", done.stdout)
+        self.assertIn("It holds:", done.stdout, "it must show what it would move")
+        self.assertTrue((legacy / "old-work.md").exists(),
+                        "an empty answer moved the folder — the default is not no")
+
+    def test_an_ordinary_install_records_the_base(self):
+        done = self.install("%s\nharness\nEnglish\nn\nn\nn\nn\nElena\ne@example.invalid\nn\n"
+                            % self.home)
+        self.assertIn("OK   your work here is being recorded", done.stdout)
+        head = subprocess.run(["git", "-C", str(self.home / "harness"), "log", "-1", "--format=%H"],
+                              capture_output=True, text=True)
+        self.assertTrue(head.stdout.strip(), "the base was left with no history")
+
+    def test_a_base_that_could_not_record_anything_says_so(self):
+        """A swallowed commit failure left every file staged, no history, and thirteen OK lines.
+
+        The reachable cause is a project repository with no commits of its own sitting under
+        `projects/`: `git add -A` fails outright on it, the failure was discarded, and the
+        installer printed its health check and "Done" over a base that had recorded nothing.
+        """
+        source = self.source()
+        nested = source / "projects" / "newapp"
+        nested.mkdir(parents=True)
+        (nested / "main.py").write_text("print('hi')\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(nested), "init", "-q"], check=True)
+        done = subprocess.run(["bash", str(source / "install.sh")],
+                              input="%s\nharness\nEnglish\nn\nn\nn\nn\nElena\ne@example.invalid\nn\n"
+                                    % self.home,
+                              capture_output=True, text=True, cwd=str(self.tmp.name),
+                              env={**os.environ, "HOME": str(self.home),
+                                   "HARNESS_ANSWERS_ON_STDIN": "1"})
+        base = self.home / "harness"
+        head = subprocess.run(["git", "-C", str(base), "log", "-1", "--format=%H"],
+                              capture_output=True, text=True).stdout.strip()
+        if not head:
+            self.assertIn("MISS your work here is being recorded", done.stdout,
+                          "a base with no history was reported as fine")
+            self.assertIn("PROBLEM", done.stdout)
+        else:
+            self.assertIn("OK   your work here is being recorded", done.stdout)
+
+
 class EnclosingRepositoryTests(unittest.TestCase):
     """Being INSIDE a repository is not the same as BEING one.
 

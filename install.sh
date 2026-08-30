@@ -199,13 +199,23 @@ if [ ! -d "$PROJECTS" ]; then
 fi
 
 # An earlier layout kept projects beside the base, where a phone or a second machine can
-# never see them. Bring them in.
+# never see them. Bring them in — but ONLY when the folder is recognisably a former harness
+# `projects/`, and never on the strength of its name.
+#
+# With the installer's own defaults this path is `$HOME/projects`, which on most machines is an
+# ordinary folder of the person's unrelated work and nothing to do with this kit. Offering to
+# absorb it — and defaulting to yes — moved a stranger's work into a repository that is then
+# committed and pushed. The marker file is what an old base leaves behind; the name is not
+# evidence of anything.
 LEGACY_PROJECTS="$(dirname "$DEST")/projects"
-if [ -d "$LEGACY_PROJECTS" ] && [ "$LEGACY_PROJECTS" != "$PROJECTS" ]; then
+if [ -d "$LEGACY_PROJECTS" ] && [ "$LEGACY_PROJECTS" != "$PROJECTS" ] \
+   && [ -f "$LEGACY_PROJECTS/_index.md" ]; then
   say ""
-  say "  Found $LEGACY_PROJECTS outside your base. Anything there is invisible to your"
-  say "  phone and to your other computers, because only the base travels."
-  if ask_yes "  Move it inside the base?" "Y"; then
+  say "  Found $LEGACY_PROJECTS — an earlier harness left it there, outside your base."
+  say "  Anything in it is invisible to your phone and your other computers."
+  say "  It holds:"
+  ls -A "$LEGACY_PROJECTS" 2>/dev/null | sed 's/^/    /' | head -20
+  if ask_yes "  Move it inside the base?" "N"; then
     python3 - "$LEGACY_PROJECTS" "$PROJECTS" <<'PY'
 import os, shutil, sys
 src, dest = sys.argv[1], sys.argv[2]
@@ -220,8 +230,9 @@ for name in os.listdir(src):
 if moved:
     print("  moved inside the base: " + ", ".join(moved))
 if not os.listdir(src):
-    os.rmdir(src)
-    print("  removed the now-empty " + src)
+    # Left in place on purpose. An empty directory is not permission to delete it, and this one
+    # is outside the base (rules/safety.md).
+    print("  " + src + " is now empty; left in place — it is outside your base")
 PY
   fi
 fi
@@ -378,10 +389,12 @@ if command -v git >/dev/null 2>&1; then
   if [ -z "$(git -C "$DEST" config user.name 2>/dev/null)" ] || [ -z "$(git -C "$DEST" config user.email 2>/dev/null)" ]; then
     say ""
     say "  Every save is stamped with a name, so you can tell your own work apart later."
+    say "  Both are needed: without them nothing you do here can be recorded at all,"
+    say "  and none of it would reach your phone or another computer."
     GIT_NAME="$(ask "  Your name" "${USER:-me}")"
-    GIT_EMAIL="$(ask "  Your email" "")"
+    GIT_EMAIL="$(ask "  Your email" "${USER:-me}@$(hostname 2>/dev/null || echo local)")"
     git -C "$DEST" config user.name "$GIT_NAME"
-    [ -n "$GIT_EMAIL" ] && git -C "$DEST" config user.email "$GIT_EMAIL"
+    git -C "$DEST" config user.email "$GIT_EMAIL"
   fi
 
   git -C "$DEST" add -A 2>/dev/null || true
@@ -389,7 +402,18 @@ if command -v git >/dev/null 2>&1; then
   # fails on a repo with none, and the first send-out has nothing to send.
   if [ -z "$(git -C "$DEST" log -1 --format=%H 2>/dev/null)" ] && \
      [ -n "$(git -C "$DEST" diff --cached --name-only 2>/dev/null)" ]; then
-    git -C "$DEST" commit -q -m "Start this base" 2>/dev/null || true
+    COMMIT_ERROR="$(git -C "$DEST" commit -q -m "Start this base" 2>&1 || true)"
+  fi
+  # A swallowed failure here left a base with every file staged and no history at all, while
+  # the installer went on to print its health check and "Done". Nothing downstream can tell
+  # that apart from a base that is simply new.
+  BASE_HAS_HISTORY=1
+  if [ -z "$(git -C "$DEST" log -1 --format=%H 2>/dev/null)" ]; then
+    BASE_HAS_HISTORY=0
+    say ""
+    say "  PROBLEM: nothing could be recorded yet, so this base has no history."
+    [ -n "${COMMIT_ERROR:-}" ] && say "    git said: $(printf '%s' "$COMMIT_ERROR" | head -2 | tr '\n' ' ')"
+    say "    Until this is fixed nothing here can reach your phone or another computer."
   fi
 
   # The one question that actually matters to the person.
@@ -450,6 +474,10 @@ check() { # check "label" 0|1
 [ -f "$DEST/.engine-manifest.yml" ] && check "kit/person path contract present" 0 || check "kit/person path contract present" 1
 [ -f "$DEST/.claude/settings.json" ] && check "sessions start by catching up" 0 || check "sessions start by catching up" 1
 if [ "$GIT_ON" -eq 1 ]; then
+  # Checked, not assumed: without history nothing here can travel, and every other OK line
+  # above would read as though it could.
+  [ "${BASE_HAS_HISTORY:-0}" -eq 1 ] && check "your work here is being recorded" 0 \
+    || { say "  MISS your work here is being recorded — nothing can reach another device yet"; DOC_OK=0; }
   if [ -n "$(git -C "$DEST" remote get-url origin 2>/dev/null || true)" ]; then
     check "your base has a private place online" 0
   else

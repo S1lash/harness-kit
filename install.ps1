@@ -185,7 +185,9 @@ if (-not $InPlace) {
   Say "Placing the base..."
   if (-not (Test-Path $Dest)) { New-Item -ItemType Directory -Path $Dest -Force | Out-Null }
   $exclude = @('.git', '.DS_Store', '__pycache__', '.venv')
+  $CopiedNames = @()
   Get-ChildItem -Force -LiteralPath $Src | Where-Object { $exclude -notcontains $_.Name } | ForEach-Object {
+    $script:CopiedNames += $_.Name
     # Copy the CONTENTS into the destination folder, not the folder into it: `Copy-Item -Recurse`
     # onto an existing directory produces `rules\rules`, which is the merge case bash handles
     # with dirs_exist_ok=True.
@@ -197,10 +199,18 @@ if (-not $InPlace) {
       Copy-Item -LiteralPath $_.FullName -Destination $d -Force
     }
   }
-  # prune ignored artifacts that may have slipped through nested dirs (mirror the bash ignore_patterns:
-  # .venv / __pycache__ dirs and *.log / .DS_Store files, at every level, not just top-level)
-  Get-ChildItem -LiteralPath $Dest -Recurse -Force -Directory -Include '__pycache__', '.venv', '.git' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-  Get-ChildItem -Path $Dest -Recurse -Force -File -Include '*.log', '.DS_Store' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+  # Prune the artifacts the copy may have carried in — and ONLY under the names it copied.
+  # Sweeping all of $Dest deleted whatever was already there: the bash twin filters at copy
+  # time (`shutil.ignore_patterns`) and never touches a pre-existing file, so a sweep here was
+  # both a [CP-4] break and a deletion nobody confirmed (rules/safety.md).
+  foreach ($copied in $CopiedNames) {
+    $under = Join-Path $Dest $copied
+    if (-not (Test-Path -LiteralPath $under)) { continue }
+    Get-ChildItem -LiteralPath $under -Recurse -Force -Directory -Include '__pycache__', '.venv', '.git' -ErrorAction SilentlyContinue |
+      Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -Path $under -Recurse -Force -File -Include '*.log', '.DS_Store' -ErrorAction SilentlyContinue |
+      Remove-Item -Force -ErrorAction SilentlyContinue
+  }
   Say "  copied base -> $Dest"
 }
 
@@ -211,12 +221,19 @@ if (-not (Test-Path $Projects)) {
 
 # An earlier layout kept projects beside the base, where a phone or a second machine can
 # never see them. Bring them in.
+# Only when the folder is recognisably a former harness `projects/`, and never on the strength
+# of its name: with this installer's own defaults the path is the person's ordinary `projects`
+# folder, and absorbing it moved unrelated work into a repository that is then pushed.
 $LegacyProjects = Join-Path (Split-Path -Parent $Dest) "projects"
-if ((Test-Path $LegacyProjects) -and ($LegacyProjects -ne $Projects)) {
+if ((Test-Path $LegacyProjects) -and ($LegacyProjects -ne $Projects) -and
+    (Test-Path (Join-Path $LegacyProjects "_index.md"))) {
   Say ""
-  Say "  Found $LegacyProjects outside your base. Anything there is invisible to your"
-  Say "  phone and to your other computers, because only the base travels."
-  if (AskYes "  Move it inside the base?" "Y") {
+  Say "  Found $LegacyProjects — an earlier harness left it there, outside your base."
+  Say "  Anything in it is invisible to your phone and your other computers."
+  Say "  It holds:"
+  Get-ChildItem -Force -LiteralPath $LegacyProjects | Select-Object -First 20 |
+    ForEach-Object { Say "    $($_.Name)" }
+  if (AskYes "  Move it inside the base?" "N") {
     Get-ChildItem -Force -LiteralPath $LegacyProjects | ForEach-Object {
       $target = Join-Path $Projects $_.Name
       if (Test-Path $target) {
@@ -227,8 +244,9 @@ if ((Test-Path $LegacyProjects) -and ($LegacyProjects -ne $Projects)) {
       }
     }
     if (-not (Get-ChildItem -Force -LiteralPath $LegacyProjects)) {
-      Remove-Item -LiteralPath $LegacyProjects
-      Say "  removed the now-empty $LegacyProjects"
+      # Left in place on purpose: an empty directory is not permission to delete it, and this
+      # one is outside the base (rules/safety.md).
+      Say "  $LegacyProjects is now empty; left in place — it is outside your base"
     }
   }
 }
@@ -373,9 +391,12 @@ if ($hasGit) {
   if (-not (Git-Q -C $Dest config user.name) -or -not (Git-Q -C $Dest config user.email)) {
     Say ""
     Say "  Every save is stamped with a name, so you can tell your own work apart later."
+    Say "  Both are needed: without them nothing you do here can be recorded at all,"
+    Say "  and none of it would reach your phone or another computer."
     $defaultName = if ($env:USERNAME) { $env:USERNAME } else { "me" }
+    $defaultMail = "$defaultName@$([System.Net.Dns]::GetHostName())"
     $GitName = Ask "  Your name" $defaultName
-    $GitEmail = Ask "  Your email" ""
+    $GitEmail = Ask "  Your email" $defaultMail
     # Guarded: with an empty value PowerShell drops the argument and `git config user.name`
     # becomes the two-token READ form — it prints the setting instead of setting it, and the
     # question comes back on every future run.
@@ -467,7 +488,12 @@ if (-not $pythonWorks) {
     Say "       registers 'python3') or add a 'python3' alias on your PATH."
   }
 }
-if ($GitOn) { Check "your base has a private place online" ([bool](Git-Q -C $Dest remote get-url origin)) }
+if ($GitOn) {
+  # Checked, not assumed: without history nothing here can travel, and every other OK line
+  # above would read as though it could.
+  Check "your work here is being recorded" ([bool](Git-Q -C $Dest log -1 --format=%H))
+  Check "your base has a private place online" ([bool](Git-Q -C $Dest remote get-url origin))
+}
 Check "your language recorded in profile.md" ((Get-Content -Raw -Encoding UTF8 -LiteralPath $ProfileFile) -match 'Language:')
 
 # Canon completeness: every rule file is named in the ONE list that carries the canon to every
