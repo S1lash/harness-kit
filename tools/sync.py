@@ -48,6 +48,22 @@ def git_ok(*args, timeout=None):
     return out if code == 0 else None
 
 
+def remote_is_public(url):
+    """True only when a check actually came back saying public.
+
+    Unknown is not private. `gh` may be absent or signed out, and a base whose visibility cannot
+    be established is reported as unchecked rather than assumed safe — asserting "private" on the
+    evidence that a URL exists is what let a fork of a public repository read as fine.
+    """
+    try:
+        probe = subprocess.run(
+            ["gh", "repo", "view", url, "--json", "visibility", "-q", ".visibility"],
+            capture_output=True, text=True, timeout=NETWORK_TIMEOUT_SECONDS)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return probe.returncode == 0 and probe.stdout.strip().lower() == "public"
+
+
 def read_state():
     """Everything the caller needs to decide, gathered in one place."""
     state = {
@@ -55,6 +71,7 @@ def read_state():
         "is_repo": git_ok("rev-parse", "--is-inside-work-tree") == "true",
         "enclosing": None,
         "nested_repos": [],
+        "remote_public": False,
         "branch": None,
         "remote_url": None,
         "upstream": None,
@@ -102,6 +119,13 @@ def read_state():
     # A project that is its own repository is committed as a gitlink: the base records a commit
     # id and none of the content, so a clone — the phone — gets an empty directory. Nothing about
     # the save says so, which is exactly the silent divergence this whole rule exists to prevent.
+    # "Private" was asserted once, at creation, and never checked again. A base whose remote was
+    # already configured, or one whose repository is a fork of a public one (a fork is always
+    # public), pushes the person's whole life somewhere anyone can read — while every check in
+    # the kit reports a private place online, on the sole evidence that a URL exists.
+    if state["remote_url"]:
+        state["remote_public"] = remote_is_public(state["remote_url"])
+
     projects = BASE / "projects"
     if projects.is_dir():
         state["nested_repos"] = sorted(
@@ -174,6 +198,8 @@ def describe(state, action_taken, directive):
     else:
         lines.append("sync: in step with the remote")
 
+    if state["remote_public"]:
+        lines.append("       ^ PUBLIC — anyone can read everything saved here")
     if state["nested_repos"]:
         lines.append("projects kept separately: %s" % ", ".join(state["nested_repos"]))
         lines.append("       their contents do NOT travel with this base — a clone gets an "
@@ -217,6 +243,10 @@ def directive_for(state):
         return "run 'pull' to put both sides together, resolve anything overlapping by reading it"
     if state["behind"]:
         return "run 'pull' to bring the base up to date, then say nothing about it"
+    if state["remote_public"]:
+        return ("STOP — do not save. The one place this base lives online is PUBLIC, so "
+                "everything in it is readable by anyone. Tell the person plainly, in their "
+                "words, and make it private before anything else is sent out")
     if state["nested_repos"]:
         return ("save as normal, then tell the person once, in their words, that what is inside "
                 "%s is kept on its own and does not travel with the base — so it will not be on "
@@ -316,7 +346,8 @@ def mode_save(message):
     state = read_state()
     # Refuse before anything is staged: `git add -A` here would stage the enclosing repository's
     # whole worktree, and the push that follows would send it wherever that repository goes.
-    if state["unreadable"] or state["enclosing"] or not state["is_repo"]:
+    if (state["unreadable"] or state["enclosing"] or state["remote_public"]
+            or not state["is_repo"]):
         print(describe(state, None, directive_for(state)))
         return 1
     if not state["identity"]:

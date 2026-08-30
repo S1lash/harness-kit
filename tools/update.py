@@ -191,7 +191,7 @@ def incoming_sections(ref: str, root: Path) -> dict:
     """
     text = ref_read_path(ref, manifest_lib.MANIFEST_NAME, root)
     sections = {}
-    for name in ("engine", "template", "migrations", "retired"):
+    for name in ("engine", "template", "exclude", "migrations", "retired"):
         if text:
             sections[name] = [p.rstrip("/") if name == "engine" else p
                               for p in manifest_lib.parse_section(name, text)]
@@ -339,6 +339,9 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
     # guard, what to seed, what to replace — is decided by what the RELEASE declares, not by what
     # this base still happens to hold.
     incoming = incoming_sections(ref, root)
+    # Read BEFORE the checkout replaces the manifest. What the base already treats as the
+    # person's space cannot be revoked by the release doing the replacing.
+    protected_before = manifest_lib.read_section("exclude", root)
 
     # A path this release ADDS to engine: has to be guarded BEFORE it is replaced, and it is the
     # likeliest of all of them to collide: until this run it was the person's own space, so
@@ -381,7 +384,9 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
         except migrate_lib.MigrationRefused as refusal:
             print("  ! a declared move cannot be previewed from this base yet: %s" % refusal)
         try:
-            removed = retire_lib.run(root, dry_run=True, entries=incoming["retired"])
+            removed = retire_lib.run(
+                root, dry_run=True, entries=incoming["retired"],
+                protected=sorted(set(protected_before) | set(incoming["exclude"])))
         except retire_lib.RetirementRefused as refusal:
             print("  ! a declared removal names paths this base calls its own: %s"
                   % ", ".join(refusal.trespassing))
@@ -432,7 +437,8 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
         blocked.append("a declared change could not be carried out: %s" % refusal)
 
     try:
-        removed = retire_lib.run(root)
+        removed = retire_lib.run(
+            root, protected=sorted(set(protected_before) | set(incoming["exclude"])))
     except retire_lib.RetirementRefused as refusal:
         blocked.append("refusing to drop paths that belong to the person, not the kit: %s"
                        % ", ".join(refusal.trespassing))

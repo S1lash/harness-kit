@@ -22,7 +22,10 @@ relevant flow fixes what it surfaces.
    nothing important sits outside. A `projects/` folder beside the base instead of inside is a FAIL:
    nothing there can ever reach the person's phone.
 4. **The base can reach their other devices.** Run `python3 tools/sync.py status`. No remote at all
-   is a FAIL — their base exists on one machine only. Unsaved work or changes that never went out
+   is a FAIL — their base exists on one machine only. A remote reported **PUBLIC** is a FAIL
+   before anything else: everything the person has ever saved is readable by anyone, and the kit
+   asserted "private" only once, at creation. A visibility it could not establish is reported as
+   unverified, never as private. Unsaved work or changes that never went out
    is a WARN with what is sitting here. More than one branch is a WARN
    (`rules/device-sync.md`).
 5. **The machinery still works.** `python3 -m unittest discover -s tools/tests` passes. A failure

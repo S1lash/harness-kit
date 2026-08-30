@@ -492,7 +492,21 @@ if ($GitOn) {
   # Checked, not assumed: without history nothing here can travel, and every other OK line
   # above would read as though it could.
   Check "your work here is being recorded" ([bool](Git-Q -C $Dest log -1 --format=%H))
-  Check "your base has a private place online" ([bool](Git-Q -C $Dest remote get-url origin))
+  # Named for what was actually established: an origin that was already there was never checked,
+  # and calling it "private" because a URL exists is the assertion that hid a public one.
+  $OriginUrl = Git-Q -C $Dest remote get-url origin
+  $Visibility = ""
+  if (Get-Command gh -ErrorAction SilentlyContinue) {
+    $Visibility = (Invoke-Native gh repo view $OriginUrl --json visibility -q .visibility)
+  }
+  if ("$Visibility".Trim().ToLower() -eq "public") {
+    Say "  MISS the place your base lives online is PUBLIC — anyone can read it"
+    $script:DocOk = $false
+  } elseif ("$Visibility".Trim().ToLower() -eq "private") {
+    Check "your base has a private place online" $true
+  } else {
+    Check "your base has a place online (privacy not verified from here)" ([bool]$OriginUrl)
+  }
 }
 Check "your language recorded in profile.md" ((Get-Content -Raw -Encoding UTF8 -LiteralPath $ProfileFile) -match 'Language:')
 

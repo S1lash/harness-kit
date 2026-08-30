@@ -154,6 +154,61 @@ class SilentDivergenceTests(unittest.TestCase):
         done = self.run_sync("status")
         self.assertNotIn("projects kept separately", done.stdout)
 
+    def test_a_public_remote_stops_the_save(self):
+        """"Private" was asserted once at creation and never checked again.
+
+        A fork of a public repository is itself public, and its address does not match the kit's,
+        so nothing moved it aside — the person's whole life then pushed somewhere anyone can
+        read, while the installer and the doctor both reported a private place online on the
+        sole evidence that a URL existed.
+        """
+        fake_bin = Path(self.tmp.name) / "bin"
+        fake_bin.mkdir()
+        gh = fake_bin / "gh"
+        gh.write_text("#!/bin/sh\necho public\n", encoding="utf-8")
+        gh.chmod(0o755)
+        remote = Path(self.tmp.name) / "their-remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        git(self.base, "remote", "add", "origin", str(remote))
+
+        done = subprocess.run(
+            [sys.executable, str(self.base / "tools" / "sync.py"), "status"],
+            capture_output=True, text=True, cwd=str(self.base),
+            env={**os.environ, "PATH": "%s:%s" % (fake_bin, os.environ.get("PATH", ""))})
+        self.assertIn("PUBLIC", done.stdout)
+        self.assertIn("readable by anyone", done.stdout)
+
+        saving = subprocess.run(
+            [sys.executable, str(self.base / "tools" / "sync.py"), "save", "anything"],
+            capture_output=True, text=True, cwd=str(self.base),
+            env={**os.environ, "PATH": "%s:%s" % (fake_bin, os.environ.get("PATH", ""))})
+        self.assertNotEqual(saving.returncode, 0, "it saved to a public remote")
+
+    def test_a_private_remote_raises_no_alarm(self):
+        # The other direction, and the one a false-positive would ruin: a base that IS private
+        # must never be told it is public, or the warning stops meaning anything.
+        fake_bin = Path(self.tmp.name) / "bin-private"
+        fake_bin.mkdir()
+        gh = fake_bin / "gh"
+        gh.write_text("#!/bin/sh\necho private\n", encoding="utf-8")
+        gh.chmod(0o755)
+        remote = Path(self.tmp.name) / "private.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        git(self.base, "remote", "add", "origin", str(remote))
+        done = subprocess.run(
+            [sys.executable, str(self.base / "tools" / "sync.py"), "status"],
+            capture_output=True, text=True, cwd=str(self.base),
+            env={**os.environ, "PATH": "%s:%s" % (fake_bin, os.environ.get("PATH", ""))})
+        self.assertNotIn("PUBLIC", done.stdout)
+
+    def test_a_visibility_that_cannot_be_established_is_not_called_public(self):
+        # Unknown is not a finding: `gh` absent or signed out must not produce a false alarm.
+        remote = Path(self.tmp.name) / "quiet.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        git(self.base, "remote", "add", "origin", str(remote))
+        done = self.run_sync("status")
+        self.assertNotIn("PUBLIC", done.stdout)
+
     def test_a_base_git_cannot_read_is_not_reported_as_clean(self):
         """`git_ok` returned None for a failure and for an empty result alike.
 
@@ -676,6 +731,27 @@ class UpdateEndToEndTests(unittest.TestCase):
         self.assertIn("NOTICE.md", done.stdout + done.stderr)
         self.assertIn("with unsaved edits", (self.base / "NOTICE.md").read_text(),
                       "the update destroyed work it had never guarded")
+
+    def test_a_release_cannot_unprotect_the_persons_space_and_then_delete_it(self):
+        """The guard compared the incoming manifest against itself.
+
+        `retire` read `exclude:` from disk, and by the time it ran the update had already
+        replaced the manifest — so both sides of the comparison came from the release. A release
+        shipping `exclude:` empty could name the person's own directories under `retired:` and
+        have them deleted, then instruct the agent to save, propagating the deletion to their
+        only backup. Protection may widen in an update; it may never narrow.
+        """
+        hostile = MANIFEST.replace("exclude:\n  - mine/", "exclude: []")
+        hostile = hostile.replace("retired:\n  - old/gone.md", "retired:\n  - mine/")
+        write(self.kit, ".engine-manifest.yml", hostile)
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "a release that unprotects the person's space")
+
+        done = run_update(self.base)
+        self.assertNotEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("belong to the person", done.stdout + done.stderr)
+        self.assertTrue((self.base / "mine" / "notes.md").exists(),
+                        "a release deleted the person's own space")
 
     def test_a_seed_this_release_introduces_lands_in_the_run_that_ships_it(self):
         """The asymmetry that hid this: the same case for `engine:` was tested and this was not.
