@@ -87,6 +87,41 @@ function Upsert-Block($target, $marker, $block) {
   Write-Utf8NoBom $target $new
 }
 
+$HomeDir = $HOME
+$Src = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# The address the kit ships from, read from the manifest rather than guessed from a name. A
+# person whose own base repository is called "harness-kit" — the name this installer suggests
+# for it — would otherwise have their own `origin` mistaken for the kit's and moved aside,
+# after which nothing they do can be saved anywhere.
+$KitAddress = ""
+$ManifestPath = Join-Path $Src ".engine-manifest.yml"
+if (Test-Path -LiteralPath $ManifestPath) {
+  $m = [regex]::Match((Get-Content -Raw -Encoding UTF8 -LiteralPath $ManifestPath),
+                      '(?m)^kit_remote:[ \t]*(\S+)')
+  if ($m.Success) { $KitAddress = $m.Groups[1].Value }
+}
+
+# Same-Repo <url-a> <url-b> -> $true when they name the same repository (mirror of same_repo
+# in install.sh): a trailing .git or slash and letter case are noise, not a difference.
+function Same-Repo($a, $b) {
+  if (-not $a -or -not $b) { return $false }
+  $na = ($a -replace '\.git$', '' -replace '/$', '').ToLower()
+  $nb = ($b -replace '\.git$', '' -replace '/$', '').ToLower()
+  return ($na -eq $nb)
+}
+
+# Two ways in. A fresh copy of the kit becomes a NEW base. A folder whose profile.md already
+# carries a recorded language IS a base — the person is setting it up on another device, and
+# nothing about their content or their history may be touched.
+Require-Answers
+
+$ExistingBase = $false
+$SrcProfile = Join-Path $Src "profile.md"
+if ((Test-Path $SrcProfile) -and ((Get-Content -Raw -Encoding UTF8 -LiteralPath $SrcProfile) -match 'the agent converses with you in this language')) {
+  $ExistingBase = $true
+}
+
 # ---------------------------------------------------------------------------
 # 1. intro
 # ---------------------------------------------------------------------------
@@ -316,7 +351,7 @@ if ($hasGit) {
   # still be fetched later from a remote that is clearly not theirs.
   if (Test-Path (Join-Path $Dest ".git")) {
     $KitUrl = (Git-Q -C $Dest remote get-url origin)
-    if ($KitUrl -and $KitUrl -match 'harness-kit') {
+    if (Same-Repo $KitUrl $KitAddress) {
       Git-Q -C $Dest remote remove origin | Out-Null
       Git-Q -C $Dest remote remove harness-kit | Out-Null
       Git-Q -C $Dest remote add harness-kit $KitUrl | Out-Null
@@ -410,12 +445,28 @@ Check "sessions start by catching up" (Test-Path (Join-Path $Dest ".claude/setti
 # Resolving the name proves nothing on Windows: `python3.exe` is an App Execution Alias that
 # opens the Microsoft Store, and a real python.org install ships `python.exe` and `py.exe` with
 # no `python3` at all. Ask it for its version and see whether anything answers.
+#
+# `python3` is checked ON ITS OWN, because that is the literal name .claude/settings.json runs
+# at session start — a JSON hook cannot try three names. Accepting `python` here instead would
+# report OK on a machine where the hook can never fire, and the person would be told their base
+# catches up by itself while it silently never does.
 $pythonWorks = $false
-foreach ($candidate in @(@('python3', '--version'), @('python', '--version'), @('py', '-3', '--version'))) {
-  $out = Invoke-Native @candidate
-  if ($LASTEXITCODE -eq 0 -and $out) { $pythonWorks = $true; break }
-}
+$out = Invoke-Native 'python3' '--version'
+if ($LASTEXITCODE -eq 0 -and $out) { $pythonWorks = $true }
 Check "python3 available (needed to catch up automatically)" $pythonWorks
+if (-not $pythonWorks) {
+  $alternative = ""
+  foreach ($candidate in @(@('python', '--version'), @('py', '-3', '--version'))) {
+    $out = Invoke-Native @candidate
+    if ($LASTEXITCODE -eq 0 -and $out) { $alternative = $candidate[0]; break }
+  }
+  if ($alternative) {
+    Say "       python is installed here as '$alternative', not as 'python3'."
+    Say "       Your base will NOT catch up on its own at session start — your agent has to do"
+    Say "       it, and it knows to. To fix it properly, install Python from python.org (which"
+    Say "       registers 'python3') or add a 'python3' alias on your PATH."
+  }
+}
 if ($GitOn) { Check "your base has a private place online" ([bool](Git-Q -C $Dest remote get-url origin)) }
 Check "your language recorded in profile.md" ((Get-Content -Raw -Encoding UTF8 -LiteralPath $ProfileFile) -match 'Language:')
 

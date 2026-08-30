@@ -941,6 +941,16 @@ class PortabilityGateTests(unittest.TestCase):
         self.assertEqual([str(f) for f in portability.scan(KIT_ROOT)], [])
 
 
+# PowerShell variables that exist without anyone assigning them: automatic variables, and the
+# scope prefixes that look like one ($script:Root).
+POWERSHELL_AUTOMATIC = frozenset({
+    "true", "false", "null", "_", "psitem", "args", "input", "home", "pwd", "pid", "host",
+    "error", "matches", "lastexitcode", "myinvocation", "psscriptroot", "pscommandpath",
+    "psversiontable", "erroractionpreference", "outputencoding", "profile", "foreach",
+    "executioncontext", "script", "global", "local",
+})
+
+
 class WindowsInstallerTests(unittest.TestCase):
     """Static checks on install.ps1 — no PowerShell here, so these guard what a read can prove.
 
@@ -977,9 +987,48 @@ class WindowsInstallerTests(unittest.TestCase):
         self.assertEqual(offenders, [])
 
     def test_it_refuses_a_non_interactive_run_like_bash_does(self):
-        self.assertIn("Require-Answers", self.text)
+        # The gate has to be CALLED, not merely defined. Asserting the name appears is satisfied
+        # by the function header alone — and a deleted call site is how this stopped working once.
+        calls = [line.strip() for line in self.text.splitlines()
+                 if line.strip() == "Require-Answers"]
+        self.assertEqual(len(calls), 1, "install.ps1 defines Require-Answers but never calls it")
         self.assertIn("HARNESS_ANSWERS_ON_STDIN", self.text)
-        self.assertIn("HARNESS_ANSWERS_ON_STDIN", (KIT_ROOT / "install.sh").read_text(encoding="utf-8"))
+        shell = (KIT_ROOT / "install.sh").read_text(encoding="utf-8")
+        self.assertIn("HARNESS_ANSWERS_ON_STDIN", shell)
+        self.assertTrue(re.search(r"^require_answers\s*$", shell, re.M),
+                        "install.sh defines require_answers but never calls it")
+
+    def test_every_variable_it_reads_is_one_it_set(self):
+        """A deletion that overshoots is invisible until a stranger's machine runs the script.
+
+        bash has `set -u` and stops on the spot; PowerShell substitutes $null and carries on, so
+        an over-wide edit surfaces as `You cannot call a method on a null-valued expression`
+        several steps later — on Windows, where nobody here can see it. This is that check.
+        """
+        code = "\n".join(line for line in self.text.splitlines()
+                          if not line.strip().startswith("#"))
+        bound = {m.lower() for m in re.findall(r"\$([A-Za-z_]\w*)\s*(?:=|\+=)", code)}
+        bound |= {m.lower() for m in
+                  re.findall(r"foreach\s*\(\s*\$([A-Za-z_]\w*)\s+in\b", code, re.I)}
+        for params in re.findall(r"^\s*(?:function\s+[\w-]+\s*|param\s*)\(([^)]*)\)",
+                                 code, re.M | re.I):
+            bound |= {m.lower() for m in re.findall(r"\$([A-Za-z_]\w*)", params)}
+        used = {m.lower() for m in re.findall(r"\$(?!env:)([A-Za-z_]\w*)", code)}
+        self.assertEqual(sorted(used - bound - POWERSHELL_AUTOMATIC), [])
+
+    def test_it_finds_the_kit_remote_the_way_the_manifest_declares_it(self):
+        """[CP-4] the twins must agree on WHICH remote is the kit's, not just that one exists.
+
+        Matching the name as a substring calls the person's own base `harness-kit` — the very
+        name this installer suggests for it — and rewrites their `origin`, after which nothing
+        can save their work anywhere.
+        """
+        self.assertTrue("kit_remote" in (KIT_ROOT / "install.sh").read_text(encoding="utf-8"),
+                        "install.sh no longer reads kit_remote from the manifest")
+        self.assertTrue("kit_remote" in self.text,
+                        "install.ps1 does not read kit_remote from the manifest")
+        self.assertTrue("-match 'harness-kit'" not in self.text,
+                        "install.ps1 identifies the kit remote by name, not by address")
 
     def test_line_endings_are_lf(self):
         # .gitattributes forces LF; a CRLF checkout of the bash twin breaks bash outright, and
