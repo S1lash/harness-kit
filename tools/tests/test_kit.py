@@ -1044,6 +1044,36 @@ class PortabilityGateTests(unittest.TestCase):
         check_kit.check_clause_ids(KIT_ROOT, lambda m, w="": failures.append(m))
         self.assertEqual(failures, [])
 
+    # -- release gates a content scanner cannot express ----------------------
+    def test_a_shipped_tool_missing_from_the_catalogue_fails_the_release(self):
+        failures = []
+        engine = list(manifest_lib.read_section("engine", KIT_ROOT)) + ["tools/nowhere.py"]
+        check_kit.check_kit_tools_are_catalogued(KIT_ROOT, engine,
+                                                 lambda m, w="": failures.append(m))
+        self.assertTrue(any("nowhere.py" in m for m in failures), failures)
+        # And the kit as it stands catalogues everything it ships.
+        clean = []
+        check_kit.check_kit_tools_are_catalogued(
+            KIT_ROOT, list(manifest_lib.read_section("engine", KIT_ROOT)),
+            lambda m, w="": clean.append(m))
+        self.assertEqual(clean, [])
+
+    def test_a_shell_tool_with_no_twin_fails_the_release(self):
+        """[CP-4] The fault a content scanner cannot see.
+
+        Portable bash is still bash: PowerShell cannot run it, and reading the file will never
+        say so — check_portability.py would report it clean.
+        """
+        failures = []
+        check_kit.check_kit_tools_run_everywhere(
+            KIT_ROOT, ["tools/helper.sh"], lambda m, w="": failures.append(m))
+        self.assertTrue(any("helper.sh" in m for m in failures), failures)
+        paired = []
+        check_kit.check_kit_tools_run_everywhere(
+            KIT_ROOT, ["tools/helper.sh", "tools/helper.ps1"],
+            lambda m, w="": paired.append(m))
+        self.assertEqual(paired, [])
+
     def test_the_kit_it_ships_today_is_clean(self):
         self.assertEqual([str(f) for f in portability.scan(KIT_ROOT)], [])
 

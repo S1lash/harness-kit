@@ -6,7 +6,7 @@
 > Read this before replacing anything wholesale, before putting a person's fact anywhere near a kit
 > path, and before adding a path to either half.
 
-## The four categories, and what each one means for you
+## The five categories, and what each one means for you
 
 The manifest's own header defines them precisely. What they oblige you to do:
 
@@ -84,14 +84,19 @@ else's machine, where nobody can see it and they cannot diagnose it:
 - a file removed from inside a kit directory without a `retired:` line — git ADDS and UPDATES on
   checkout and never deletes, so without that line the file lives on every base forever;
 - a retired path that still ships, which would be restored and deleted on every single update;
-- a tool in `tools/` declared nowhere, which therefore reaches nobody;
+- a tool in `tools/` declared nowhere, which therefore reaches nobody, or one that ships without a
+  row in `tools/_kit.md` — an agent orients from that catalogue, so a tool missing there is
+  invisible in the one surface it exists for;
+- a kit tool written in shell or PowerShell with no twin beside it. This is the fault the
+  portability gate cannot see: a `.sh` of impeccably portable bash is still not runnable by
+  PowerShell, and reading its contents will never say so;
 - a rule missing from the one canon list, or that list restated in `CLAUDE.md`;
 - kit paths changed without `VERSION` moving (nobody's daily check notices), or `VERSION` moved
   without `CHANGELOG.md` (the update has nothing to tell them);
-- a shipped file that would behave differently on Windows or on macOS — a bash 4 builtin, a
-  GNU-only flag, a path from the author's own disk, text read through whatever encoding the
-  platform defaults to. This one is why the gate exists at all: those faults are invisible to the
-  author by construction, because the author's machine is the one they work on.
+- a shipped file that would behave differently on Windows or on macOS. `python3
+  tools/check_portability.py --rules` prints what it looks for, from the rule table itself. This
+  one is why the gate exists at all: those faults are invisible to the author by construction,
+  because the author's machine is the one they work on.
 
 The structural half of the same gate runs on any base and is what `/harness-doctor` calls, and so
 do the tests: a base can prove its own machinery works without its owner knowing what any of it is.

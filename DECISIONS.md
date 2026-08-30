@@ -13,9 +13,15 @@
 ## 2026-08-30 — Portable scope is read from the manifest, not judged
 
 **Chosen:** `rules/cross-platform.md` derives its two tiers from `.engine-manifest.yml`. Tier 1 is
-`engine:` plus `template:` minus `exclude:` — exactly what an update writes onto somebody else's
-disk — and is held to the letter, gated by `tools/check_portability.py`. Tier 2 is everything the
-person wrote, held to the spirit and never gated.
+`engine:` plus `template:` — exactly what an update writes onto somebody else's disk — held to the
+letter and gated by `tools/check_portability.py`. Tier 2 is everything the person wrote, held to the
+spirit and never gated.
+
+`template:` beats `exclude:` where they overlap. A seed that lands inside the person's space is
+still something the kit ships: `update.py` seeds every template regardless of `exclude:`, so reading
+the overlap the other way would let one manifest mean two different things to its two readers — and
+the files it ships would reach strangers unchecked. Where a seed lands says nothing about who wrote
+it.
 
 **Alternatives considered:** a hand-kept list of "files that must be portable"; a marker comment in
 each file declaring its tier; holding the whole repository to one standard.

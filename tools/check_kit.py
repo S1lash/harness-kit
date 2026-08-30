@@ -157,6 +157,49 @@ def check_tools_classified(root, engine, template, exclude, fail):
                  "Name it under engine: to ship it, or exclude: if it is the person's.")
 
 
+def check_kit_tools_are_catalogued(root, engine, fail):
+    """A shipped tool the catalogue does not name is one the agent will never reach for.
+
+    `tools/_kit.md` is how an agent orienting in a base learns what it can run. A tool that ships
+    to everyone and appears in no catalogue is invisible in exactly the surface it exists for, and
+    nothing about a missing row is ever reported by anything.
+    """
+    catalogue = root / "tools" / "_kit.md"
+    if not catalogue.exists():
+        return
+    listed = catalogue.read_text(encoding="utf-8")
+    for entry in engine:
+        name = entry.rsplit("/", 1)[-1]
+        if not entry.startswith("tools/") or entry.endswith("/") or name.startswith("_"):
+            continue
+        if (root / entry).suffix.lower() not in (".py", ".js", ".mjs", ".sh", ".ps1"):
+            continue
+        if name not in listed:
+            fail("%s ships but tools/_kit.md does not name it" % entry,
+                 "An agent orients from that catalogue; a tool missing there reaches nobody.")
+
+
+def check_kit_tools_run_everywhere(root, engine, fail):
+    """[CP-4] A kit tool has to be runnable on every platform the kit installs on.
+
+    The gate that reads a script's CONTENTS cannot answer this: a `.sh` full of impeccably
+    portable bash still cannot be executed by PowerShell, and `check_portability.py` would report
+    it clean. What makes a tool runnable everywhere is the interpreter it is invoked through —
+    `python3`, which the installer hard-requires on every platform, or node for an MCP wrapper.
+    A shell or PowerShell tool needs its twin, exactly as the installers have.
+    """
+    for entry in engine:
+        if not entry.startswith("tools/"):
+            continue
+        suffix = (root / entry).suffix.lower()
+        if suffix not in (".sh", ".ps1"):
+            continue
+        twin = entry[: -len(suffix)] + (".ps1" if suffix == ".sh" else ".sh")
+        if twin not in engine:
+            fail("%s is a kit tool with no platform twin" % entry,
+                 "Write it in python, or ship %s beside it and keep the two in lockstep." % twin)
+
+
 def check_version_moved(root, engine, ref, fail):
     """A release that changes the kit without moving VERSION is invisible to everyone."""
     code, _ = git("rev-parse", "--verify", "--quiet", ref, root=root)
@@ -318,6 +361,8 @@ def main(argv) -> int:
         check_person_space_ships_pristine(root, template, exclude, fail)
         check_seeds_unchanged(root, template, args.since, fail)
         check_tools_classified(root, engine, template, exclude, fail)
+        check_kit_tools_are_catalogued(root, engine, fail)
+        check_kit_tools_run_everywhere(root, engine, fail)
         check_removals_retired(root, engine, retired, args.since, fail)
         check_version_moved(root, engine, args.since, fail)
 

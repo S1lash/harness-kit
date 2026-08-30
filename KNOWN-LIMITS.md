@@ -4,9 +4,10 @@
 > can decide about; one that is not is a surprise on somebody else's machine.
 
 - **`install.ps1` has never been executed.** It was audited line by line and every fault found was
-  fixed, and seven tests in `tools/tests/` guard what a read can prove — the byte-order mark, the
-  file encodings, that no native command runs outside the error-handling helper, and that its
-  prompts and health checks match the shell installer's exactly. None of that proves it runs. One
+  fixed, and `WindowsInstallerTests` in `tools/tests/` guards what a read can prove — the
+  byte-order mark, the file encodings, that no native command runs outside the error-handling
+  helper, that every variable it reads is one it set, and that its prompts, health checks and
+  kit-remote logic match the shell installer's exactly. None of that proves it runs. One
   run on a real Windows machine is the outstanding item.
 - **A change to a seed reaches nobody who already has it.** `template:` files are created when
   missing and never rewritten, which is what keeps a person's own rows safe. So the kit's half of a

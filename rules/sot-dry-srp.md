@@ -7,23 +7,29 @@ mapping, a convention. Any project, any session.
 - **DRY.** Tempted to copy → link. A duplicate = two sources of truth that will diverge.
 - **SRP.** Each module / document / section / skill has one responsibility and one owner. Don't smear
   responsibility across files.
-- **The home of a fact — by the object it's about (SRP for knowledge; analogy — OOP).** A fact about
-  the object lives in that object's home. A process / use-case artifact (how WE apply the object)
-  describes ITS OWN thing and **links** to the object's home — like an OOP client references, doesn't
-  copy internals. Three layers, always separate:
-  - **Object-in-itself** (how it's built) → its own home (durable subsystem → its knowledge home;
-    external tool → its tool home).
-  - **Automation over the object** (a callable verb — script / wrapper) → its own catalog + narrative.
-  - **Process / use-case** (how we apply it) → a topic domain, **by link** to the object's home.
-  Anti-pattern: an external tool's field IDs / auth / API mechanics inside a process doc or skill
-  instead of a link to the tool's home.
-
-  **Where to put ANY fact — one question:** "about the object itself / our process with it / a
-  callable automation over it?" → **object's home** / **topic domain by link** / **tool**. Map of
-  homes → `knowledge/_index.md`; moving a fact → doctrine/harness-edit-checklist.md.
-
 Check before creating any artifact: "does this fact already live somewhere? am I linking or copying?".
 Copying → stop, justify to the person. Conscious explicit exceptions allowed.
+
+## The home of a fact — by the object it's about
+
+> SRP for knowledge; the analogy is OOP. Four files point here by this name, so it is a section and
+> not a bullet.
+
+A fact about the object lives in that object's home. A process / use-case artifact (how WE apply the
+object) describes ITS OWN thing and **links** to the object's home — like an OOP client references
+rather than copying internals. Three layers, always separate:
+
+- **Object-in-itself** (how it's built) → its own home (durable subsystem → its knowledge home;
+  external tool → its tool home).
+- **Automation over the object** (a callable verb — script / wrapper) → its own catalog + narrative.
+- **Process / use-case** (how we apply it) → a topic domain, **by link** to the object's home.
+
+Anti-pattern: an external tool's field IDs / auth / API mechanics inside a process doc or skill
+instead of a link to the tool's home.
+
+**Where to put ANY fact — one question:** "about the object itself / our process with it / a
+callable automation over it?" → **object's home** / **topic domain by link** / **tool**. Map of
+homes → `knowledge/_index.md`; moving a fact → `doctrine/harness-edit-checklist.md`.
 
 ## Home boundary — the base vs a project
 

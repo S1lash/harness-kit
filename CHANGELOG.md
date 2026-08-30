@@ -4,29 +4,47 @@ The sanctioned history home for this repo (the one place `present-not-history` a
 change — like `knowledge/decisions.md` for decisions). The canon itself always describes the
 present; evolution is logged here.
 
-## 2026-08-10
+## 2026-08-30
 
-Two silent-divergence holes, surfaced while wiring this base onto a machine that runs two agents
-side by side:
+The platform layer: the cross-platform rule stops depending on somebody remembering it.
 
-- Add `rules/multi-agent.md` (hot canon): the base is the shared memory across agent runtimes and
-  an agent's private store is scratch, never a home; a canon change reaches every wired agent in
-  the same edit; capabilities differ between runtimes, canon does not. Nothing previously said that
-  a durable fact left in a runtime's own memory is invisible to the other runtimes — and, in Claude
-  Code, to every other folder.
-- `rules/self-learning.md`: route away from the runtime's own memory store explicitly, by link to
-  the rule above.
-- `.claude/commands/harness-doctor.md` + `install.sh` health check: verify canon parity — every file in `rules/` is
-  named in both hand-maintained lists (`CLAUDE.md`, `AGENTS.md`). A rule listed for one agent and
-  missing for another was previously undetectable, and reads as in-force when it is not.
-
-## 2026-08-11
-
-- `rules/working-method.md`: add "Presenting a design" — a design ships as a self-contained HTML
-  artifact over a textual SoT, generated diagrams are for the person's own reading while anything
-  shown to someone else is hand-authored inline SVG, and a standalone HTML file declares
-  `charset=utf-8` or non-ASCII text reaches the reader as mojibake. Three traps that cost a rebuild
-  each time they are met fresh.
+- `rules/cross-platform.md` rewritten. Scope is no longer a judgement call — tier 1 is exactly what
+  `.engine-manifest.yml` ships (`engine:` + `template:`, with `template:` winning wherever it
+  overlaps `exclude:`) and is held to the letter
+  because it reaches machines nobody here will ever see; tier 2 is the person's own space, held to
+  the spirit. Its clauses are named `[CP-1]`..`[CP-6]` rather than numbered by position: a gate that
+  cites "section 2.2" is wrong the first time a paragraph moves, and a contract that can be cited
+  from code has to have a name that does not drift.
+- Add `tools/lib/portability.py` and `tools/check_portability.py` — the machine-checkable half of
+  those clauses, run over tier 1 by `check_kit.py` and therefore by `/harness-doctor` on any base.
+  Rules match code and never prose: comments and docstrings are blanked, markdown is read only
+  inside language-tagged fences, so the rule file that *lists* every banned construct is not itself
+  a finding. The one escape is an inline `portability-ok: <reason>` with the reason mandatory —
+  there is no allowlist file, because an exemption nobody reads is how a rule quietly stops
+  applying.
+- `check_kit.py` binds clause IDs in both directions: a clause the canon defines that nothing
+  enforces, and a gate rule citing a clause nobody wrote, are both failures. Neither was previously
+  visible, and the first is the shape of a rule everyone believes is guarded.
+- `install.ps1` identified the kit's remote by matching the string "harness-kit"; it now compares
+  against `kit_remote:` in the manifest, as `install.sh` always did. A person whose own base
+  repository carries that name — the name the installer suggests for it — would have had their own
+  `origin` moved aside, after which nothing they did could be saved anywhere.
+- The installer's python check accepted `python` or `py -3`, but the session hook runs the literal
+  name `python3` and a JSON hook cannot try three names. It reported OK on machines where the hook
+  could never fire; it now tests what actually runs, and `CLAUDE.md` says how an agent detects a
+  hook that did not fire.
+- A static check that every variable `install.ps1` reads is one it set. bash stops on the spot with
+  `set -u`; PowerShell substitutes `$null` and carries on, so an over-wide edit surfaces several
+  steps later on somebody else's Windows machine.
+- Two release gates for faults a content scanner cannot express: a shipped tool with no row in
+  `tools/_kit.md` (an agent orients from that catalogue, so a tool missing there is invisible in the
+  one surface it exists for), and a kit tool written in shell or PowerShell with no twin beside it.
+  Portable bash is still bash — PowerShell cannot run it, and reading the file will never say so.
+- The symlink machinery is gone from `install.sh` and `install.ps1`. It was the one mechanism that
+  could not be made to behave the same on all three platforms — Git Bash writes a text stub unless
+  an environment variable is set, a dangling link is invisible to `Test-Path`, and `Remove-Item` on
+  a directory link deletes through it — and nothing in the kit needed it. A copy is understood by
+  everyone; a link that is a file on one platform is not.
 
 ## 2026-08-23
 
@@ -181,42 +199,29 @@ One canon list instead of two, and a gate that catches a bad release before anyo
 - Add `doctrine/kit-ownership.md`: which paths an update may replace and which it must never touch.
   This replaces the previous fork-and-own stance in `README.md`.
 
-## 2026-08-30
+## 2026-08-11
 
-The platform layer: the cross-platform rule stops depending on somebody remembering it.
+- `rules/working-method.md`: add "Presenting a design" — a design ships as a self-contained HTML
+  artifact over a textual SoT, generated diagrams are for the person's own reading while anything
+  shown to someone else is hand-authored inline SVG, and a standalone HTML file declares
+  `charset=utf-8` or non-ASCII text reaches the reader as mojibake. Three traps that cost a rebuild
+  each time they are met fresh.
 
-- `rules/cross-platform.md` rewritten. Scope is no longer a judgement call — tier 1 is exactly what
-  `.engine-manifest.yml` ships (`engine:` + `template:`, minus `exclude:`) and is held to the letter
-  because it reaches machines nobody here will ever see; tier 2 is the person's own space, held to
-  the spirit. Its clauses are named `[CP-1]`..`[CP-6]` rather than numbered by position: a gate that
-  cites "section 2.2" is wrong the first time a paragraph moves, and a contract that can be cited
-  from code has to have a name that does not drift.
-- Add `tools/lib/portability.py` and `tools/check_portability.py` — the machine-checkable half of
-  those clauses, run over tier 1 by `check_kit.py` and therefore by `/harness-doctor` on any base.
-  Rules match code and never prose: comments and docstrings are blanked, markdown is read only
-  inside language-tagged fences, so the rule file that *lists* every banned construct is not itself
-  a finding. The one escape is an inline `portability-ok: <reason>` with the reason mandatory —
-  there is no allowlist file, because an exemption nobody reads is how a rule quietly stops
-  applying.
-- `check_kit.py` binds clause IDs in both directions: a clause the canon defines that nothing
-  enforces, and a gate rule citing a clause nobody wrote, are both failures. Neither was previously
-  visible, and the first is the shape of a rule everyone believes is guarded.
-- `install.ps1` identified the kit's remote by matching the string "harness-kit"; it now compares
-  against `kit_remote:` in the manifest, as `install.sh` always did. A person whose own base
-  repository carries that name — the name the installer suggests for it — would have had their own
-  `origin` moved aside, after which nothing they did could be saved anywhere.
-- The installer's python check accepted `python` or `py -3`, but the session hook runs the literal
-  name `python3` and a JSON hook cannot try three names. It reported OK on machines where the hook
-  could never fire; it now tests what actually runs, and `CLAUDE.md` says how an agent detects a
-  hook that did not fire.
-- A static check that every variable `install.ps1` reads is one it set. bash stops on the spot with
-  `set -u`; PowerShell substitutes `$null` and carries on, so an over-wide edit surfaces several
-  steps later on somebody else's Windows machine.
-- The symlink machinery is gone from `install.sh` and `install.ps1`. It was the one mechanism that
-  could not be made to behave the same on all three platforms — Git Bash writes a text stub unless
-  an environment variable is set, a dangling link is invisible to `Test-Path`, and `Remove-Item` on
-  a directory link deletes through it — and nothing in the kit needed it. A copy is understood by
-  everyone; a link that is a file on one platform is not.
+## 2026-08-10
+
+Two silent-divergence holes, surfaced while wiring this base onto a machine that runs two agents
+side by side:
+
+- Add `rules/multi-agent.md` (hot canon): the base is the shared memory across agent runtimes and
+  an agent's private store is scratch, never a home; a canon change reaches every wired agent in
+  the same edit; capabilities differ between runtimes, canon does not. Nothing previously said that
+  a durable fact left in a runtime's own memory is invisible to the other runtimes — and, in Claude
+  Code, to every other folder.
+- `rules/self-learning.md`: route away from the runtime's own memory store explicitly, by link to
+  the rule above.
+- `.claude/commands/harness-doctor.md` + `install.sh` health check: verify canon parity — every file in `rules/` is
+  named in both hand-maintained lists (`CLAUDE.md`, `AGENTS.md`). A rule listed for one agent and
+  missing for another was previously undetectable, and reads as in-force when it is not.
 
 ## 2026-07-16
 

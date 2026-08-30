@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The single reader of `.engine-manifest.yml`.
 
-Dependency-free on purpose. The manifest is a flat document — a version scalar
+Dependency-free on purpose. The manifest is a flat document — two scalars
 and five lists of path entries — and every machine running this kit has a stock
 python and nothing else guaranteed. A YAML library would be a second reader to
 keep in step and one more thing a person has to install before their base can

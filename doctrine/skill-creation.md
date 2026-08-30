@@ -71,7 +71,7 @@ consumer checks the helper's output against the raw source, doesn't trust it bli
 - [ ] **Jargon unpacked** — would anyone understand it?
 - [ ] **Home of a fact by the object** — the skill does NOT embed an external tool's mechanics
       (field IDs, curl/REST/SDK, auth), those are in the tool's home; the skill links.
-- [ ] **Cross-platform** — any script / path / hook / symlink / command works on every platform
+- [ ] **Cross-platform** — any script / path / hook / command works on every platform
       and agent runtime (rules/cross-platform.md).
 - [ ] **Link to the home-SoT, not a neighbouring consumer skill.**
 

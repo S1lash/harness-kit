@@ -39,6 +39,12 @@ skills thin.
 
 ## Tools live in `tools/`, catalogued beside them
 
+- **A kit tool is invoked through an interpreter that exists on every platform the kit installs
+  on** — `python3`, which the installer hard-requires everywhere, or node for an MCP wrapper. Shell
+  is not one: a `.sh` cannot be executed by PowerShell however portable its bash is, so a shell tool
+  ships with its `.ps1` twin or it is not a kit tool. `check_kit.py --authoring` refuses the
+  release either way. This is the person's own space too only in the sense of tier 2
+  (`rules/cross-platform.md`): what they write for themselves has to run where they run it.
 - Scripts are **cross-platform** (rules/cross-platform.md): Python-first or Node, `pathlib`
   / portable paths, no hardcoded home paths, parity across OSes.
 - Every tool gets a row: the kit's own in `tools/_kit.md`, which updates keep current, and the

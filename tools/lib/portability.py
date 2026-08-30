@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Make the cross-platform clauses executable instead of remembered.
+"""Make the cross-platform clauses of `rules/cross-platform.md` executable.
 
-`rules/cross-platform.md` is a HARD RULE that was enforced by human memory, and memory does not
-scale: an audit of this kit's own PowerShell installer found three faults that each independently
-broke a stock Windows machine, and a shell flag that had never worked went unnoticed for as long as
-it existed. Every one of them violated a clause already written down.
+A clause a person has to remember is a clause that holds until the day somebody is in a hurry, and
+the faults it catches are invisible to whoever writes them: they only appear on a platform the
+author does not have. Why this is a gate rather than a habit: `DECISIONS.md`.
 
 **Scope is not a new concept.** Tier 1 is exactly what `.engine-manifest.yml` ships — `engine:` plus
 `template:`. Nothing is labelled and nothing is decided here; the manifest already says which paths
@@ -314,9 +313,9 @@ class Line:
 def _python_lines(text: str):
     """Python read through the tokenizer: every string and comment blanked, calls joined.
 
-    The line-based approach this replaces could not tell a one-line docstring from code, treated a
-    triple-quoted help constant as executable, and could not see a call whose arguments ran over
-    more than one line — the ordinary shape of `open(...)`. All three are the tokenizer's job.
+    Telling a docstring from code, a help constant from a statement, and the full extent of a call
+    whose arguments run over several lines are all the tokenizer's job, and nothing short of it
+    gets them right.
     """
     lines = text.splitlines()
     masked = [list(line) for line in lines]

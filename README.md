@@ -49,23 +49,12 @@ setup for them — do not make them learn the structure. Steps:
 1. **Read `AGENTS.md`** — the contract every runtime reads, and the one place the canon is
    listed. (Claude Code reaches it through `CLAUDE.md`, which is one import of it.) The canon in
    `rules/` is your standard and minimum quality bar; load it.
-2. **Ask the questions yourself, or run the installer.** It reads answers from a terminal, so
-   running it from your own shell means nobody is there to answer — it stops rather than taking
-   defaults nobody chose. Walk its steps conversationally, or pass the person's answers on stdin
-   with `HARNESS_ANSWERS_ON_STDIN=1`. It is `./install.sh` (macOS / Linux / Git-Bash) or
-   `install.ps1` (Windows), and it:
-   - recognises whether this is a **new base** or **their existing base arriving on another
-     device** — in the second case it touches neither their content nor their history;
-   - asks **where** to place the base and **what to name** it. Everything they build lives in
-     `projects/` **inside** the base, so any surface that has the base has all of it;
-   - asks the person's **language** and records it in `profile.md` — from then on you
-     **converse with them in that language**, while all base content, code, and commits
-     stay in English;
-   - asks **which agents** they use and wires this canon into each one's global entry point
-     (Claude `~/.claude/`, Codex, Cursor) so it is hot from any folder;
-   - sets up **the one private place their base lives online** — that is what makes their
-     phone and their computer show the same thing;
-   - runs a **health check** (`/harness-doctor`).
+2. **Ask the questions yourself, or run the installer** — `./install.sh` (macOS / Linux /
+   Git-Bash) or `install.ps1` (Windows). It reads answers from a terminal, so running it from your
+   own shell means nobody is there to answer: it stops rather than taking defaults nobody chose.
+   Walk its steps conversationally, or pass the person's answers on stdin with
+   `HARNESS_ANSWERS_ON_STDIN=1`. What it asks and what each answer buys them is written out step by
+   step in `.claude/commands/harness-init.md`, which is the procedure to follow.
 3. **Create that private place if the installer could not** — it says so explicitly. Use your
    GitHub access to create a **private** repository, set it as `origin`, and send the base to it.
    This is also the first real test of that access: if you do not have it, say so plainly and say
@@ -86,8 +75,8 @@ you follow it whether or not the session-start hook ran.
 
 | Path | What it is |
 |---|---|
-| `rules/` | The canon — 14 hard-rule files, loaded hot every session. Your standard. |
-| `doctrine/` | On-demand authoring meta — deep-knowledge, edit-checklist, skill-creation gate, knowledge/activities discipline, tool-vs-instrument, kit-vs-person ownership, the contract every project carries. |
+| `rules/` | The canon — hard rules, loaded hot every session. Your standard. `AGENTS.md` lists them; that list is the only one. |
+| `doctrine/` | On-demand authoring meta, read when a task needs it and never by default. `AGENTS.md` says what is in there. |
 | `knowledge/` | Durable understanding. Ships empty with the routing & growth discipline. |
 | `activities/` | Work that survives sessions. Agent-maintained index + strict anti-bias rule. |
 | `projects/` | The things you build — **inside** the base, so they travel with it. Agent-maintained index. |
