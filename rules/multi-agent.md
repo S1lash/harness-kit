@@ -42,7 +42,9 @@ rule cannot be in force for one runtime and absent for another:
 - **A rule that reaches one agent and not another is worse than no rule.** Partial landing is not a
   small omission; it is a hole the next session inherits blind.
 - **Say which surfaces you touched** when you change canon. One line, not a report.
-- **Verify, don't assume:** the file list in `rules/` and the list in `AGENTS.md` name the same set.
+- **Verify, don't assume:** the file list in `rules/` and the list in `AGENTS.md` name the same
+  set. A rule on disk that the list omits still binds — read it and repair the list in the same
+  session. The list is an index, never the definition.
   `python3 tools/check_kit.py` proves it; `/harness-doctor` reports it.
 
 ## Different capabilities, identical canon

@@ -20,9 +20,16 @@ already loaded them; one that does not, reads them now.
 @rules/grounding.md
 @rules/present-not-history.md
 @rules/git-safety.md
+@rules/safety.md
 @rules/cross-platform.md
 @rules/working-method.md
 @profile.md
+
+A `*.md` file sitting in `rules/` that is not named above is canon too, and binds you exactly the
+same: read it, then add it to this list in the same session. The list is the one place this can be
+got wrong, so it is also the one place you are expected to repair — never read it as the
+definition of the canon, only as its index. A file there that is not a rule at all belongs
+somewhere else: `rules/` is the kit's own space (`doctrine/kit-ownership.md`).
 
 Deeper how-to, read on demand and never by default: `doctrine/` — authoring for agents, knowledge
 discipline, skill creation, the deep-knowledge pattern, tool-vs-instrument, the harness-edit

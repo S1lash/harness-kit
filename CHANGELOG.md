@@ -30,6 +30,23 @@ side by side:
 
 ## 2026-08-23
 
+The canon layer, closing three holes that were each a rule believing itself enforced:
+
+- Add `rules/safety.md` — irreversible and outward-facing actions that are not git's. The
+  discriminator in `harness-stewardship.md` had been pointing at a list that did not exist. It also
+  reconciles with `device-sync.md`: an agent that owns a base decides instead of asking, but
+  look-first, scope, and the ban on unwitnessed outward-facing actions do not relax — the absence
+  of a witness is what makes such an action unreviewable, so it goes into the save message instead.
+- **The canon list repairs itself.** `AGENTS.md` now tells the agent that a rule on disk the list
+  omits still binds: read it and fix the list in the same session, and never read the list as the
+  definition of the canon. The release gate already caught a missing entry for the author; on a
+  person's base nobody runs it, and the instruction is what closes that half.
+- The concierge pillar gains **how to offer** a capability — by judgement, never by keyword, and
+  silence over an offer that adds ceremony to work that did not need it. Deliberately without a
+  catalog of capabilities: the runtime already knows its own, and a shipped list would be wrong on
+  the first base that installs anything.
+
+
 Two things the kit could not do, and the gates that keep them from coming back:
 
 - **`migrations:` — a change replacement cannot express.** A path in the person's own space that has

@@ -1,6 +1,8 @@
 # Git Safety (HARD RULE)
 
-Any project, any session.
+Any project, any session. Destructiveness that is not git's — deletions, external systems, acting
+outside the base, the scope of an approval — lives in `rules/safety.md`; this file is the git half
+and does not repeat it.
 
 ## `--force` / `-f` forbidden without explicit approval
 

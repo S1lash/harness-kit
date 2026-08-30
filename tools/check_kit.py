@@ -95,7 +95,10 @@ def check_canon_listed_once(root, fail):
     rules = sorted(p.name for p in (root / "rules").glob("*.md"))
     contract = (root / "AGENTS.md").read_text(encoding="utf-8")
     for name in rules:
-        if name not in contract:
+        # The whole entry, never the bare filename: `safety.md` is a substring of
+        # `git-safety.md`, so a bare search reports a rule as listed when nothing lists it —
+        # and the rule then reaches no runtime while the gate says the kit is ready to ship.
+        if ("@rules/%s" % name) not in contract:
             fail("rule not listed in AGENTS.md: %s" % name,
                  "It is silently not in force for any runtime.")
     bridge = (root / "CLAUDE.md").read_text(encoding="utf-8")

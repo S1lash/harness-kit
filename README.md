@@ -86,7 +86,7 @@ you follow it whether or not the session-start hook ran.
 
 | Path | What it is |
 |---|---|
-| `rules/` | The canon — 13 hard-rule files, loaded hot every session. Your standard. |
+| `rules/` | The canon — 14 hard-rule files, loaded hot every session. Your standard. |
 | `doctrine/` | On-demand authoring meta — deep-knowledge, edit-checklist, skill-creation gate, knowledge/activities discipline, tool-vs-instrument, kit-vs-person ownership, the contract every project carries. |
 | `knowledge/` | Durable understanding. Ships empty with the routing & growth discipline. |
 | `activities/` | Work that survives sessions. Agent-maintained index + strict anti-bias rule. |

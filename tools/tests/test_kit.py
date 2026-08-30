@@ -883,6 +883,23 @@ class ShippedKitTests(unittest.TestCase):
             self.assertIn(name, contract, "%s is silently not in force" % name)
             self.assertNotIn("@rules/%s" % name, bridge, "the canon list must exist once")
 
+    def test_the_canon_list_tells_the_agent_to_repair_it(self):
+        # The list is the one place the canon can be got wrong, and on a person's base nobody runs
+        # the release gate. So the instruction itself has to close the hole: a rule on disk that
+        # the list omits still binds, and the session that notices repairs it.
+        contract = (KIT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        self.assertIn("not named above is canon too", contract)
+        self.assertIn("index", contract)
+
+    def test_safety_and_git_safety_do_not_restate_each_other(self):
+        # Two rules over one subject drift. git-safety owns git; safety owns everything else and
+        # each names the other rather than repeating it.
+        git_rule = (KIT_ROOT / "rules" / "git-safety.md").read_text(encoding="utf-8")
+        safety = (KIT_ROOT / "rules" / "safety.md").read_text(encoding="utf-8")
+        self.assertIn("rules/safety.md", git_rule)
+        self.assertIn("rules/git-safety.md", safety)
+        self.assertNotIn("--force", safety, "the force list has one home, and it is git-safety")
+
     def test_declared_paths_exist(self):
         for entry in manifest_lib.read_section("engine", KIT_ROOT):
             self.assertTrue((KIT_ROOT / entry.rstrip("/")).exists(), entry)

@@ -10,6 +10,45 @@
 > **Present-not-history EXCEPTION** (`rules/present-not-history.md`): the evolution and rationale of
 > a decision IS the content here. Everywhere else states only the current state and links here.
 
+## 2026-08-23 — Safety is a sibling of git-safety, and authority does not relax it
+
+**Chosen:** `rules/safety.md` — a hot rule covering irreversible and outward-facing actions that
+are not git's: reading is free, look at the target before acting, deletions are confirmed, changing
+anything outside the base needs approval, an external system is never touched without confirmation,
+and an approval covers only what it covered. It names `git-safety.md` for the git half and is named
+by it; neither repeats the other.
+
+**Alternatives considered:** folding these into `git-safety.md`; leaving them scattered across
+`harness-stewardship.md` and `working-method.md`, which is where they were.
+
+**Why:** the discriminator in `harness-stewardship.md` already said "external or irreversible → ask"
+and then never said what that meant, so it was a rule an agent could believe it was following while
+deleting something. Folding it into git-safety would put two subjects in one file and make the
+force list harder to find; scattering is what we had, and scattered safety is read as advisory.
+
+The part worth arguing: an agent that owns a base holds the owner's authority
+(`rules/device-sync.md`), so the asking steps become deciding steps — but three things do not
+relax. Look-first binds because it is not a courtesy, it is how you discover the instruction was
+written blind. Scope binds because authority over a base is not authority over everything the base
+can reach. And an outward-facing action is never made free by the absence of a witness — the
+absence is exactly what makes it unreviewable, which is why the autonomous owner records it in the
+save message instead.
+
+## 2026-08-23 — Offering discipline, but no catalog of capabilities
+
+**Chosen:** the concierge pillar in `rules/harness-stewardship.md` gains how to offer — by
+judgement, never by keyword; silence beats an offer that adds ceremony to work that did not need
+it; one line, never a menu. No catalog file listing what the agent can do.
+
+**Alternatives considered:** a `tool-suggestions.md`-style rule carrying a table of capabilities,
+which is what the harness this was taken from does and does well.
+
+**Why:** the table works there because one person maintains it against the skills they installed.
+In a kit it would be a second source of truth for something the runtime already knows exactly — the
+agent's own capabilities are in its context, and a shipped list would be wrong on the first base
+that installs anything. The kit's own canon forbids precisely this. What generalises is not the
+catalog but the trigger: the discipline moved, the table did not.
+
 ## 2026-08-23 — One canon list, in AGENTS.md; CLAUDE.md imports it
 
 **Chosen:** `AGENTS.md` carries the canon list and is the contract every runtime reads.
