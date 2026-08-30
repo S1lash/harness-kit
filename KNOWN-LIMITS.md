@@ -3,6 +3,24 @@
 > Kit-owned and honest. A limit that is written down is one an agent can work around and a person
 > can decide about; one that is not is a surprise on somebody else's machine.
 
+- **Nothing here knows what a secret is, and the base pushes on its own.** `rules/device-sync.md`
+  has the agent saving small and often — on its own authority where nobody is there to ask — into
+  a repository that is private but is still a remote. A key, a token or a connection string
+  written into `knowledge/` or a project note goes out with everything else, and no gate, rule or
+  tool looks for one. The private-by-default repository is the only thing standing between that
+  and a public leak, and "private" is a setting somebody can change later.
+
+  This is a deliberate gap, not an oversight: secret hygiene is being designed separately. Until
+  it lands, treat the base as somewhere secrets do not go, and say so plainly to anyone setting
+  one up. A `.gitignore` entry for `.env` is NOT the fix and is deliberately absent — it would
+  cover the one place a secret usually is not, and buy a false sense of protection for the many
+  places it might be.
+- **Deploying anything is out of scope.** The base holds what a person builds, and knows nothing
+  about running it: no home for infrastructure facts (a VPS, a domain, an access path), no deploy
+  flow, nothing that would let a non-technical person put a project online from their phone. That
+  was in the original intent for this kit and is not in it. It is blocked on the same thing as
+  the item above and for the same reason — infrastructure facts ARE credentials, mostly, so the
+  home for them cannot be designed before the rule about what may be written down.
 - **`install.ps1` has never been executed.** It was audited line by line and every fault found was
   fixed, and `WindowsInstallerTests` in `tools/tests/` guards what a read can prove — the
   byte-order mark, the file encodings, that no native command runs outside the error-handling
