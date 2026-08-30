@@ -99,22 +99,6 @@ with open(target, "w", encoding="utf-8") as f:
 PY
 }
 
-make_symlink() { # make_symlink <target> <link_path>
-  _target="$1"; _link="$2"
-  if [ -L "$_link" ]; then
-    rm -f "$_link"
-  elif [ -e "$_link" ]; then
-    say "  note: $_link already exists and is not a link — leaving it, the @-imports below still work."
-    return 0
-  fi
-  if ln -s "$_target" "$_link" 2>/dev/null; then
-    say "  linked $_link -> $_target"
-  else
-    say "  note: could not create the symlink $_link (on Windows this can need admin rights)."
-    say "        Not a problem — the canon is still wired via the entries written into your agent's global file."
-  fi
-}
-
 HOME_DIR="${HOME:-$USERPROFILE}"
 
 # The kit's own address, from the manifest — repo content, so it is the same everywhere.
@@ -301,7 +285,6 @@ if ask_yes "Do you use Claude Code?" "Y"; then
   CLAUDE_WIRED=1
   CLAUDE_DIR="$HOME_DIR/.claude"
   mkdir -p "$CLAUDE_DIR"
-  make_symlink "$DEST/rules" "$CLAUDE_DIR/harness-kit-rules"
   {
     printf '## Harness Kit — global canon (managed by install.sh; do not edit between the markers)\n\n'
     printf '**HARNESS HOME:** `%s`\n' "$DEST"

@@ -71,6 +71,7 @@ engine:
   - tools/sync.py
   - tools/update.py
   - tools/check_kit.py
+  - tools/check_portability.py
   - tools/mcp-wrapper.js
   - tools/lib/
   - tools/tests/

@@ -1,9 +1,6 @@
 ﻿# Harness Kit installer — Windows PowerShell (lockstep twin of install.sh).
 # Same prompts, same wiring. Run in PowerShell:  powershell -ExecutionPolicy Bypass -File .\install.ps1
 #
-# Symlink creation on Windows may require either Developer Mode enabled or an
-# elevated (admin) shell. If it can't make the link, the canon is still wired
-# via the entries written into your agent's global file.
 
 $ErrorActionPreference = 'Stop'
 
@@ -88,39 +85,6 @@ function Upsert-Block($target, $marker, $block) {
   $dir = Split-Path -Parent $target
   if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
   Write-Utf8NoBom $target $new
-}
-
-function Make-Symlink($targetPath, $linkPath) {
-  # Get-Item, not Test-Path: a link whose target moved still exists but Test-Path resolves it
-  # and reports false, so the stale link would never be repaired. And .Delete() on the
-  # DirectoryInfo removes the link itself — Remove-Item on a directory symlink can recurse into
-  # the TARGET and take the canon with it.
-  $item = Get-Item -LiteralPath $linkPath -Force -ErrorAction SilentlyContinue
-  if ($item) {
-    if ($item.LinkType) { $item.Delete() }
-    else { Say "  note: $linkPath already exists and is not a link — leaving it, the @-imports still work."; return }
-  }
-  try {
-    New-Item -ItemType SymbolicLink -Path $linkPath -Target $targetPath -Force | Out-Null
-    Say "  linked $linkPath -> $targetPath"
-  } catch {
-    Say "  note: could not create the symlink $linkPath (Windows may need Developer Mode or an admin shell)."
-    Say "        Not a problem — the canon is still wired via the entries written into your agent's global file."
-  }
-}
-
-$HomeDir = $HOME
-$Src = Split-Path -Parent $MyInvocation.MyCommand.Path
-
-# Two ways in. A fresh copy of the kit becomes a NEW base. A folder whose profile.md already
-# carries a recorded language IS a base — the person is setting it up on another device, and
-# nothing about their content or their history may be touched.
-Require-Answers
-
-$ExistingBase = $false
-$SrcProfile = Join-Path $Src "profile.md"
-if ((Test-Path $SrcProfile) -and ((Get-Content -Raw -Encoding UTF8 -LiteralPath $SrcProfile) -match 'the agent converses with you in this language')) {
-  $ExistingBase = $true
 }
 
 # ---------------------------------------------------------------------------
@@ -278,7 +242,6 @@ if (AskYes "Do you use Claude Code?" "Y") {
   $ClaudeWired = $true
   $ClaudeDir = Join-Path $HomeDir ".claude"
   if (-not (Test-Path $ClaudeDir)) { New-Item -ItemType Directory -Path $ClaudeDir -Force | Out-Null }
-  Make-Symlink (Join-Path $Dest "rules") (Join-Path $ClaudeDir "harness-kit-rules")
   $block = @"
 ## Harness Kit — global canon (managed by install.ps1; do not edit between the markers)
 

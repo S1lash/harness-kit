@@ -25,6 +25,7 @@ sys.path.insert(0, str(KIT_ROOT / "tools"))
 
 from lib import manifest as manifest_lib  # noqa: E402
 from lib import migrate as migrate_lib  # noqa: E402
+from lib import portability  # noqa: E402
 from lib import retire as retire_lib  # noqa: E402
 
 TOOL_FILES = ("update.py", "check_kit.py")
@@ -815,6 +816,131 @@ retired: []
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
 
 
+class PortabilityGateTests(unittest.TestCase):
+    """Every clause must fire on real code and stay silent on prose. A gate that cannot fail is
+    indistinguishable from a codebase that is clean."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.addCleanup(self.tmp.cleanup)
+
+    def findings(self, relpath, body, binary=False):
+        target = self.root / relpath
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if binary:
+            target.write_bytes(body)
+        else:
+            target.write_text(body, encoding="utf-8")
+        return portability.scan_file(self.root, relpath)
+
+    def clauses(self, relpath, body, binary=False):
+        return sorted({f.rule.clause for f in self.findings(relpath, body, binary)})
+
+    # -- CP-2: bash 4 and GNU/BSD splits -------------------------------------
+    def test_bash_four_builtins_are_caught(self):
+        for line in ("mapfile -t x < f", "readarray -t x < f", "declare -A m",
+                     'echo "${name^^}"', 'echo "${name,,}"'):
+            self.assertIn("CP-2", self.clauses("a.sh", line + "\n"), line)
+
+    def test_commands_whose_flags_differ_by_platform_are_caught(self):
+        for line in ("readlink -f x", "sed -i s/a/b/ f", "stat -c %s f", "stat -f %z f",
+                     "grep -P foo f"):
+            self.assertIn("CP-2", self.clauses("a.sh", line + "\n"), line)
+
+    def test_a_portable_equivalent_is_not_a_finding(self):
+        clean = 'while IFS= read -r line; do :; done < f\ntr "a-z" "A-Z" < f\ngrep -E foo f\n'
+        self.assertEqual(self.clauses("a.sh", clean), [])
+
+    # -- CP-1: a path that exists on one machine ------------------------------
+    def test_a_hardcoded_home_path_is_caught_in_shell_and_python(self):
+        self.assertIn("CP-1", self.clauses("a.sh", 'cd /Users/someone/base\n'))
+        self.assertIn("CP-1", self.clauses("a.py", 'p = "/home/someone/base"\n'))
+
+    # -- CP-5: text decoded through whatever the platform defaults to ---------
+    def test_python_text_io_without_an_encoding_is_caught(self):
+        for line in ('t = p.read_text()', 't = path.read_text(errors="replace")',
+                     'f = open(path)', 'f = open(path, "w")'):
+            self.assertIn("CP-5", self.clauses("a.py", line + "\n"), line)
+
+    def test_declared_encoding_and_binary_mode_are_not_findings(self):
+        clean = ('t = p.read_text(encoding="utf-8")\n'
+                 'f = open(path, "w", encoding="utf-8")\n'
+                 'b = open(path, "rb")\n')
+        self.assertEqual(self.clauses("a.py", clean), [])
+
+    def test_powershell_reading_without_an_encoding_is_caught(self):
+        self.assertIn("CP-5", self.clauses("a.ps1", '$t = Get-Content -Raw -LiteralPath $p\n'))
+        self.assertEqual(self.clauses("a.ps1", '$t = Get-Content -Raw -Encoding UTF8 -LiteralPath $p\n'), [])
+
+    def test_a_ps1_with_non_ascii_and_no_bom_is_caught(self):
+        self.assertIn("CP-5", self.clauses("a.ps1", "Write-Host 'тире —'\n".encode("utf-8"), binary=True))
+        with_bom = b"\xef\xbb\xbf" + "Write-Host 'тире —'\n".encode("utf-8")
+        self.assertEqual(self.clauses("a.ps1", with_bom, binary=True), [])
+
+    # -- CP-6: a native command under a stop-on-error shell -------------------
+    def test_a_bare_native_call_in_powershell_is_caught(self):
+        self.assertIn("CP-6", self.clauses("a.ps1", '$u = (git -C $Dest remote get-url origin)\n'))
+
+    def test_the_helper_and_an_existence_check_are_not_findings(self):
+        clean = ('$u = (Git-Q -C $Dest remote get-url origin)\n'
+                 'Invoke-Native gh auth status\n'
+                 '$has = [bool](Get-Command git -ErrorAction SilentlyContinue)\n')
+        self.assertEqual(self.clauses("a.ps1", clean), [])
+
+    # -- CP-3: line endings ---------------------------------------------------
+    def test_crlf_is_caught_in_any_shipped_text(self):
+        self.assertIn("CP-3", self.clauses("a.sh", b"echo hi\r\n", binary=True))
+
+    # -- prose is never code --------------------------------------------------
+    def test_a_comment_describing_a_banned_construct_is_not_a_finding(self):
+        self.assertEqual(self.clauses("a.sh", "# never use mapfile or readlink -f here\n"), [])
+        self.assertEqual(self.clauses("a.py", "# open(path) without an encoding is wrong\n"), [])
+
+    def test_a_docstring_describing_a_banned_construct_is_not_a_finding(self):
+        body = '"""Why open(path) is wrong.\n\nAlso never mapfile.\n"""\nx = 1\n'
+        self.assertEqual(self.clauses("a.py", body), [])
+
+    def test_a_hash_inside_a_string_is_not_a_comment(self):
+        # Blanking from the first `#` regardless of quotes would hide the rest of the line.
+        self.assertIn("CP-2", self.clauses("a.sh", 'echo "a # b"; mapfile -t x < f\n'))
+
+    def test_markdown_prose_is_never_matched_but_a_tagged_fence_is(self):
+        prose = "Never use `mapfile` — it is bash 4.\n"
+        self.assertEqual(self.clauses("a.md", prose), [])
+        fenced = "Example:\n\n```bash\nmapfile -t x < f\n```\n"
+        self.assertIn("CP-2", self.clauses("a.md", fenced))
+        untagged = "Example:\n\n```\nmapfile -t x < f\n```\n"
+        self.assertEqual(self.clauses("a.md", untagged), [])
+
+    # -- the escape -----------------------------------------------------------
+    def test_an_inline_escape_with_a_reason_suppresses_the_finding(self):
+        self.assertEqual(self.clauses("a.sh", "mapfile -t x < f  # portability-ok: linux-only probe\n"), [])
+        above = "# portability-ok: linux-only probe\nmapfile -t x < f\n"
+        self.assertEqual(self.clauses("a.sh", above), [])
+
+    def test_an_escape_without_a_reason_does_not_suppress(self):
+        self.assertIn("CP-2", self.clauses("a.sh", "mapfile -t x < f  # portability-ok:\n"))
+
+    # -- scope ----------------------------------------------------------------
+    def test_the_rule_table_and_the_fixtures_are_not_scanned(self):
+        body = "mapfile -t x < f\n"
+        self.assertEqual(portability.scan_file(KIT_ROOT, "tools/lib/portability.py"), [])
+        self.assertEqual(self.clauses("tools/tests/fixture.sh", body), [])
+
+    def test_tier_one_is_exactly_what_the_manifest_ships(self):
+        shipped = set(portability.shipped_paths(KIT_ROOT))
+        self.assertIn("rules/cross-platform.md", shipped)
+        self.assertIn("install.ps1", shipped)
+        self.assertNotIn("knowledge/decisions.md", shipped - {"knowledge/decisions.md"} | set())
+        for entry in manifest_lib.read_section("exclude", KIT_ROOT):
+            self.assertFalse([p for p in shipped if manifest_lib.covers([entry], p)],
+                             "the person's space is tier 2: %s" % entry)
+
+    def test_the_kit_it_ships_today_is_clean(self):
+        self.assertEqual([str(f) for f in portability.scan(KIT_ROOT)], [])
+
+
 class WindowsInstallerTests(unittest.TestCase):
     """Static checks on install.ps1 — no PowerShell here, so these guard what a read can prove.
 
@@ -861,6 +987,7 @@ class WindowsInstallerTests(unittest.TestCase):
         self.assertNotIn(b"\r\n", self.raw)
 
     def test_both_installers_ask_the_same_questions(self):
+        """[CP-4] a mechanism with a platform twin moves in lockstep."""
         shell = (KIT_ROOT / "install.sh").read_text(encoding="utf-8")
         for question in ("Where should your base live?", "What should the base folder be called?",
                          "What language should the agent talk to you in?", "Do you use Claude Code?",

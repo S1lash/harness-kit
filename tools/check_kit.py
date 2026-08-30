@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -28,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib import manifest as manifest_lib  # noqa: E402
 from lib import migrate as migrate_lib  # noqa: E402
+from lib import portability  # noqa: E402
 
 RELEASE_REF = "main"
 PLUGIN_MANIFEST = ".claude-plugin/plugin.json"
@@ -106,6 +108,32 @@ def check_canon_listed_once(root, fail):
     if restated:
         fail("CLAUDE.md restates the canon list: %s" % ", ".join(restated),
              "One list, in AGENTS.md. A second copy drifts and nobody notices.")
+
+
+def check_clause_ids(root, fail):
+    """A clause and the mechanism that enforces it must know about each other, both ways.
+
+    A gate enforcing an id no rule defines is a check with no authority — nobody can look up what
+    it means. A rule marked as machine-enforced with nothing enforcing it is worse: it reads as
+    guarded and is not. Two mechanisms can carry a clause — the portability scanner and the test
+    suite — and each names the ids it covers.
+    """
+    rule_file = root / "rules" / "cross-platform.md"
+    if not rule_file.exists():
+        return  # nothing defines clauses here, so nothing can drift from them
+    rule_text = rule_file.read_text(encoding="utf-8")
+    defined = set(re.findall(r"\[(CP-\d+)\]", rule_text))
+    scanned = set(portability.clauses())
+    test_file = root / "tools" / "tests" / "test_kit.py"
+    tested = set(re.findall(r"\[(CP-\d+)\]", test_file.read_text(encoding="utf-8"))
+                 ) if test_file.exists() else set()
+
+    for clause in sorted(scanned - defined):
+        fail("the portability gate enforces %s, which no rule defines" % clause,
+             "A finding nobody can look up is a check with no authority.")
+    for clause in sorted(defined - (scanned | tested)):
+        fail("%s is marked machine-enforced but nothing enforces it" % clause,
+             "It reads as guarded and is not. Enforce it, or drop the marker.")
 
 
 def check_tools_classified(root, engine, template, exclude, fail):
@@ -278,6 +306,12 @@ def main(argv) -> int:
     check_versions(root, fail)
     check_canon_listed_once(root, fail)
     check_migrations(root, engine, fail)
+    check_clause_ids(root, fail)
+    findings = portability.scan(root)
+    for finding in findings:
+        fail("%s:%s not portable [%s]" % (finding.path, finding.line or "-", finding.rule.clause),
+             finding.rule.why)
+
     if args.authoring:
         # Authoring-only: on a person's base their own knowledge and activities are exactly what
         # is supposed to be there. This asks whether the KIT is shipping any.
