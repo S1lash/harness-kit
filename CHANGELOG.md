@@ -36,6 +36,16 @@ The platform layer: the cross-platform rule stops depending on somebody remember
 - A static check that every variable `install.ps1` reads is one it set. bash stops on the spot with
   `set -u`; PowerShell substitutes `$null` and carries on, so an over-wide edit surfaces several
   steps later on somebody else's Windows machine.
+- The update engine now reads the release it is applying, not only the base it is applying to: a
+  path a release adds to `engine:` lands in the run that ships it, `--dry-run` previews the moves
+  and deletions that release declares, and a refused move no longer cancels an unrelated deletion
+  in silence. `manifest.parse_section` reads a section from any manifest text, so one parser serves
+  both.
+- Retiring a file from inside a shipped directory is expressible again: the gate refused it both
+  with and without a `retired:` line, from the same manifest state.
+- Three more release gates: a path listed twice in one section, a path both shipped on its own and
+  retired, and `kit_remote:` naming a repository that is not this one — the fork trap, where every
+  base you set up is quietly reconciled back to upstream.
 - Two release gates for faults a content scanner cannot express: a shipped tool with no row in
   `tools/_kit.md` (an agent orients from that catalogue, so a tool missing there is invisible in the
   one surface it exists for), and a kit tool written in shell or PowerShell with no twin beside it.

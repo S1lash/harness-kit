@@ -65,6 +65,38 @@ def check_no_double_listing(engine, template, fail):
     for entry in sorted(overlap):
         fail("listed as both engine and template: %s" % entry,
              "engine wins on update and would overwrite what the person put in it.")
+    # A repeat inside one section is silent otherwise: the path count the update reports goes up,
+    # the work does not, and an author adding an entry that is already there reads the higher
+    # number as proof their change landed.
+    for section, entries in (("engine", engine), ("template", template)):
+        seen = set()
+        for entry in entries:
+            key = entry.rstrip("/")
+            if key in seen:
+                fail("listed twice under %s: %s" % (section, entry),
+                     "The count goes up and the work does not, which reads as a change landing.")
+            seen.add(key)
+
+
+def check_kit_remote_is_this_repository(root, fail):
+    """A fork that keeps the upstream address has its bases quietly pulled back upstream.
+
+    Every update reconciles a base's `harness-kit` remote to whatever `kit_remote:` declares —
+    which is what makes moving the kit possible at all. The other side of it: fork this repository,
+    forget this line, and every base you set up follows YOUR clone once and upstream ever after,
+    on one line of output nobody reads twice.
+    """
+    declared = manifest_lib.read_kit_remote(root)
+    if not declared:
+        return
+    code, actual = git("remote", "get-url", "origin", root=root)
+    if code != 0 or not actual.strip():
+        return  # no origin to compare against; nothing can be concluded
+    normalise = lambda url: url.strip().rstrip("/").removesuffix(".git").lower()
+    if normalise(declared) != normalise(actual):
+        fail("kit_remote: names %s but this repository's origin is %s" % (declared, actual.strip()),
+             "If you forked the kit, point kit_remote: at YOUR clone — otherwise every base you "
+             "set up is reconciled back to upstream on its first update.")
 
 
 def check_retired(root, engine, template, exclude, retired, fail):
@@ -369,6 +401,7 @@ def main(argv) -> int:
         check_kit_tools_run_everywhere(root, engine, fail)
         check_removals_retired(root, engine, retired, args.since, fail)
         check_version_moved(root, engine, args.since, fail)
+        check_kit_remote_is_this_repository(root, fail)
 
     if not failures:
         scope = "ready to ship" if args.authoring else "structurally sound"

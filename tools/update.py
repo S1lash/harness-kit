@@ -21,7 +21,13 @@ Modes
   --self-heal  restore the updater itself from the remote first, then re-run
 
 The updater ships THROUGH the update, so a base carrying a broken copy can
-never receive its own repair by the normal path. `--self-heal` is that path.
+never receive its own repair by the normal path. `--self-heal` is that path —
+for a copy that still LOADS. A file python cannot even parse fails before the
+flag is read, and no mode inside this file can help. That one is recovered
+without python at all, and the command is the whole of it:
+
+    git fetch harness-kit main
+    git checkout harness-kit/main -- tools/update.py tools/lib .engine-manifest.yml
 """
 
 from __future__ import annotations

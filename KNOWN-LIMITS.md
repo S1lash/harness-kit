@@ -21,6 +21,14 @@
 - **Global agent wiring is reported, not repaired.** An update detects a runtime whose global entry
   no longer names this base and says so; re-running the installer for that runtime is a person's
   decision, because it writes outside the folder they chose.
+- **`--self-heal` repairs an updater that still loads, not one that will not parse.** It is a
+  mode inside `tools/update.py`, so a corruption severe enough to break the file — a half-written
+  save, a merge conflict left in place — crashes before the flag is ever read, and the person sees
+  a python traceback they cannot act on. The recovery for that case needs no python and no working
+  updater: `git fetch harness-kit main` then
+  `git checkout harness-kit/main -- tools/update.py tools/lib .engine-manifest.yml`. An agent
+  present in the session runs it; the boundary is stated here because nothing in the traceback
+  says which side of it you are on.
 - **The portability gate reads code, so it can be fooled by code that hides.** It is a static
   scanner, and three shapes are deliberately out of reach rather than accidentally missed: a
   construct split mid-word across a shell continuation (`map\` + newline + `file`), a command name

@@ -83,7 +83,13 @@ else's machine, where nobody can see it and they cannot diagnose it:
 - a declared path that does not exist, or one owned by two sections at once;
 - a file removed from inside a kit directory without a `retired:` line — git ADDS and UPDATES on
   checkout and never deletes, so without that line the file lives on every base forever;
-- a retired path that still ships, which would be restored and deleted on every single update;
+- a retired path that still ships, or one listed on its own under `engine:` and retired in the
+  same manifest — a path cannot both be shipped and dropped. Retiring a file from INSIDE a shipped
+  directory is the ordinary case and always allowed;
+- a path listed twice in one section, which raises the count an update reports without raising the
+  work, so an author reads the higher number as their change landing;
+- `kit_remote:` naming a repository that is not this one. Fork the kit and forget that line, and
+  every base you set up is reconciled back to upstream on its first update;
 - a tool in `tools/` declared nowhere, which therefore reaches nobody, or one that ships without a
   row in `tools/_kit.md` — an agent orients from that catalogue, so a tool missing there is
   invisible in the one surface it exists for;

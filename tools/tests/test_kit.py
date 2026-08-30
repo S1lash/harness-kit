@@ -211,6 +211,67 @@ class UpdateEndToEndTests(unittest.TestCase):
         self.assertEqual((self.base / "seed.md").read_text(), "pristine seed\n")
         self.assertIn("a seed this base never received", done.stdout)
 
+    def test_a_path_this_release_adds_to_engine_lands_in_the_run_that_ships_it(self):
+        """The manifest is itself one of the paths being replaced.
+
+        Read the engine list only from the copy on disk and a file the release introduces is
+        invisible to the run that ships it: it appears one whole update late, and the run that
+        should have carried it says nothing at all.
+        """
+        widened = MANIFEST.replace("  - rules/", "  - rules/\n  - GLOSSARY.md")
+        write(self.kit, ".engine-manifest.yml", widened)
+        write(self.kit, "GLOSSARY.md", "a kit path this release introduces\n")
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "widen engine")
+
+        done = run_update(self.base)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertTrue((self.base / "GLOSSARY.md").exists(),
+                        "a newly declared kit path did not land in the run that shipped it")
+        self.assertIn("a kit path this release introduced", done.stdout)
+
+    def test_a_dry_run_previews_what_the_release_declares_not_what_the_base_knows(self):
+        """Moves and deletions are the two operations review-before-the-fact exists for."""
+        declared = MANIFEST.replace(
+            "retired:",
+            "migrations:\n  - move pointers -> knowledge/pointers | note\n\nretired:")
+        declared = declared.replace("retired:\n", "retired:\n  - old/gone.md\n", 1)
+        write(self.kit, ".engine-manifest.yml", declared)
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "declare a move and a retirement")
+        write(self.base, "pointers/stack.md", "theirs\n")
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "their pointers")
+
+        done = run_update(self.base, "--dry-run")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("move pointers to knowledge/pointers", done.stdout)
+        self.assertIn("drop old/gone.md", done.stdout)
+        self.assertTrue((self.base / "pointers/stack.md").exists(), "a dry run changed something")
+
+    def test_a_blocked_move_does_not_cancel_an_unrelated_deletion(self):
+        """The two passes are independent, so one refusing must not silently skip the other.
+
+        Returning on the first refusal left every declared deletion undone for as long as an
+        unrelated move stayed blocked — and said nothing, so nobody could know.
+        """
+        declared = MANIFEST.replace(
+            "retired:",
+            "migrations:\n  - move pointers -> knowledge/pointers | note\n\nretired:")
+        write(self.kit, ".engine-manifest.yml", declared)
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "declare the move")
+        write(self.base, "pointers/stack.md", "theirs\n")
+        write(self.base, "knowledge/pointers/already.md", "in the way\n")
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "a destination already occupied")
+
+        done = run_update(self.base)
+        self.assertNotEqual(done.returncode, 0, "a blocked move must not report success")
+        self.assertTrue((self.base / "pointers/stack.md").exists(), "the move must not be forced")
+        self.assertFalse((self.base / "old").exists(),
+                         "the unrelated retirement was skipped because the move was blocked")
+
     def test_a_declared_move_is_carried_by_the_update_itself(self):
         # End to end: the kit declares it, the base takes the update, the path has moved. The
         # declaration is read from the manifest that arrives in the SAME run — which is why it is
@@ -1045,6 +1106,60 @@ class PortabilityGateTests(unittest.TestCase):
         self.assertEqual(failures, [])
 
     # -- release gates a content scanner cannot express ----------------------
+    def test_retiring_a_file_from_inside_a_shipped_directory_is_allowed(self):
+        """The case the section exists for, which the gate made impossible to satisfy.
+
+        Without a `retired:` line it failed for the removal; with one it failed for coverage —
+        from the same manifest state, so retiring anything out of `rules/` or `doctrine/` could
+        not be shipped. The fear does not hold: `git checkout <ref> -- <dir>` writes what the ref
+        has and never recreates a file the ref lacks.
+        """
+        failures = []
+        check_kit.check_retired(KIT_ROOT, ["doctrine/"], [], ["knowledge/"],
+                                ["doctrine/gone.md"], lambda m, w="": failures.append(m))
+        self.assertEqual(failures, [],
+                         "retiring from inside a shipped directory must be expressible")
+
+    def test_a_path_that_is_both_shipped_on_its_own_and_retired_fails(self):
+        failures = []
+        check_kit.check_retired(KIT_ROOT, ["doctrine/gone.md"], [], [],
+                                ["doctrine/gone.md"], lambda m, w="": failures.append(m))
+        self.assertTrue(any("listed on its own" in m for m in failures), failures)
+
+    def test_a_path_listed_twice_in_one_section_fails_the_release(self):
+        # Silent otherwise: the path count the update reports goes up, the work does not, and an
+        # author adding an entry that is already there reads the higher number as it landing.
+        failures = []
+        check_kit.check_no_double_listing(["rules/", "README.md", "README.md"], [],
+                                          lambda m, w="": failures.append(m))
+        self.assertTrue(any("twice under engine" in m for m in failures), failures)
+        clean = []
+        check_kit.check_no_double_listing(
+            list(manifest_lib.read_section("engine", KIT_ROOT)),
+            list(manifest_lib.read_section("template", KIT_ROOT)),
+            lambda m, w="": clean.append(m))
+        self.assertEqual(clean, [])
+
+    def test_a_fork_that_kept_the_upstream_address_fails_the_release(self):
+        """Fork the kit, forget `kit_remote:`, and every base you set up goes upstream.
+
+        Each update reconciles a base's kit remote to whatever the manifest declares — the same
+        mechanism that makes moving the kit possible — so the omission is silent and permanent
+        after one line of output nobody reads twice.
+        """
+        fork = Path(self.tmp.name) / "fork"
+        shutil.copytree(KIT_ROOT, fork, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        subprocess.run(["git", "-C", str(fork), "init", "-q", "-b", "main"], check=True)
+        subprocess.run(["git", "-C", str(fork), "remote", "add", "origin",
+                        "https://github.com/someone/their-fork"], check=True)
+        failures = []
+        check_kit.check_kit_remote_is_this_repository(fork, lambda m, w="": failures.append(m))
+        self.assertTrue(any("kit_remote:" in m for m in failures), failures)
+        # The kit itself declares its own address, so it passes.
+        clean = []
+        check_kit.check_kit_remote_is_this_repository(KIT_ROOT, lambda m, w="": clean.append(m))
+        self.assertEqual(clean, [])
+
     def test_a_shipped_tool_missing_from_the_catalogue_fails_the_release(self):
         failures = []
         engine = list(manifest_lib.read_section("engine", KIT_ROOT)) + ["tools/nowhere.py"]
