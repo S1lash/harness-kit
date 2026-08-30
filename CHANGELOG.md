@@ -36,6 +36,17 @@ The platform layer: the cross-platform rule stops depending on somebody remember
 - A static check that every variable `install.ps1` reads is one it set. bash stops on the spot with
   `set -u`; PowerShell substitutes `$null` and carries on, so an over-wide edit surfaces several
   steps later on somebody else's Windows machine.
+- The updater finds its kit by the ADDRESS the manifest declares, not by the remote's name. That
+  name lives in each base's git config, which no manifest section reaches and no clone carries, so
+  a name used as the contract could never be corrected once bases existed — renaming the kit would
+  have cut off every base in the world, repairable only through the channel it had just broken.
+- A seed a release introduces now lands in the run that ships it. It read the manifest on disk
+  while the dry-run read the incoming one, so the preview promised a file the run delivered an
+  update later.
+- `replace, never merges` is gated. It is the invariant the whole update design rests on and
+  nothing checked it; the force/rebase scan covered only `sync.py`, so a merge added to the
+  updater would have shipped green.
+- A second copy of the canon list is caught wherever it sits, not only in `CLAUDE.md`.
 - Add `ARCHITECTURE.md`: how the layers connect — canon, ownership, the two engines, the gates —
   and the six invariants that hold it together. It links to each fact's home rather than restating
   it; what it adds is the shape none of those files can show from the inside, plus where the seams

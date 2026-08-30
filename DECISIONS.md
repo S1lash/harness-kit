@@ -10,6 +10,40 @@
 > **Present-not-history EXCEPTION** (`rules/present-not-history.md`): the evolution and rationale of
 > a decision IS the content here. Everywhere else states only the current state and links here.
 
+## 2026-08-30 — The kit is identified by its address, never by a name
+
+**Chosen:** `tools/update.py` finds the remote to update from by comparing each configured
+remote's URL against `kit_remote:` in the manifest, falling back to the conventional name only
+when the manifest declares no address. `install.sh` and `install.ps1` already did the same when
+deciding which remote is the kit's.
+
+**Alternatives considered:** keeping the name `harness-kit` as the contract; declaring a rename as
+a `migrations:` operation; asking the person to re-run the installer after a rename.
+
+**Why:** the remote's name lives in each base's git config. No manifest section reaches it and no
+clone carries it, so it cannot be changed by shipping anything — which means a name used as the
+contract can never be corrected once bases exist. Renaming the kit as a product would have cut
+off every base already in the world, and the repair could only travel through the channel it had
+just broken. `migrations:` cannot express it either: its one verb moves paths, and a remote is not
+a path. Asking the person to re-run an installer puts a structural chore on them, which the
+stewardship rule forbids outright.
+
+An address is the one identifier the kit publishes and can move on purpose — `reconcile_kit_remote`
+already stages exactly that, one release ahead of the move.
+
+The part that took the design work is not the rename at all: **every base has two remotes, and one
+of them is the person's own private copy.** Matching an address loosely, or picking the first
+remote configured, replaces a base's kit paths out of the person's own repository — which looks
+like a successful update and silently corrupts the standard. So the comparison normalises the two
+spellings git actually produces (a trailing `.git`, a trailing slash, case) and matches nothing
+else, and the test is written with the kit under `upstream` so that git lists the person's
+`origin` first.
+
+**What this does NOT solve, on purpose.** The kit's own *name* is still written into the plugin
+manifest and the `/harness-*` command filenames. Both are `engine:` paths, so a rename ships as an
+ordinary replacement plus `retired:` lines. Only the remote needed a mechanism, because only the
+remote lives somewhere an update cannot reach.
+
 ## 2026-08-30 — Portable scope is read from the manifest, not judged
 
 **Chosen:** `rules/cross-platform.md` derives its two tiers from `.engine-manifest.yml`. Tier 1 is

@@ -1261,6 +1261,25 @@ class PortabilityGateTests(unittest.TestCase):
                                 ["doctrine/gone.md"], lambda m, w="": failures.append(m))
         self.assertTrue(any("listed on its own" in m for m in failures), failures)
 
+    def test_a_second_canon_list_is_caught_wherever_it_sits(self):
+        """The check knew about one file; a second list is a second truth wherever it lives.
+
+        `CLAUDE.md` is the likely place and was the only one watched. A list copied into a README
+        or a doctrine page drifts exactly the same way, and the person goes on believing a rule
+        applies.
+        """
+        for where in ("README.md", "doctrine/kit-ownership.md", "CLAUDE.md"):
+            fake = Path(self.tmp.name) / where.replace("/", "_")
+            shutil.copytree(KIT_ROOT, fake, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+            target = fake / where
+            target.write_text(target.read_text(encoding="utf-8")
+                              + "\n@rules/safety.md\n@rules/grounding.md\n@rules/communication.md\n",
+                              encoding="utf-8")
+            failures = []
+            check_kit.check_canon_listed_once(fake, lambda m, w="": failures.append(m))
+            self.assertTrue(any("restates the canon list" in m for m in failures),
+                            "a second list in %s was not caught: %s" % (where, failures))
+
     def test_a_pointer_into_a_renamed_section_fails_the_kit(self):
         """The one defect `present-not-history` forbids that only eyes could catch.
 

@@ -69,14 +69,20 @@ it. So there is exactly **one hand-maintained list**, and everything else derive
            Cursor user rules            same
 ```
 
-Adding a rule means writing the file and adding one line to `AGENTS.md`. Nothing else, ever —
-re-running the installer is only for when the wiring itself changes.
-(`rules/multi-agent.md` → "A canon change reaches every wired agent in the same edit".)
+What adding a rule costs, and when the installer has to be re-run at all, is stated once in
+`rules/multi-agent.md` → "A canon change reaches every wired agent in the same edit". The shape
+above is why that list can be short.
 
 **The list repairs itself.** `AGENTS.md` tells the agent that a rule file it does not name is
 canon anyway: read it, then fix the list in the same session. The list is an index, never the
 definition — because the one thing that must never happen is a rule everybody believes is in
 force while nothing loads it. `tools/check_kit.py` proves the two agree.
+
+**How much of this a machine does depends on the runtime.** A runtime that expands `@`-imports
+loads the canon as files; one that does not is *instructed* to read them and is trusted to. So the
+arrows above are a wiring diagram in one case and an instruction in the other, and the gate proves
+only that the list names every rule — never that anything read them. That is the honest ceiling on
+"this rule is in force", and it is why the canon is small enough to be read in full.
 
 **Three loading tiers**, because loading everything is as bad as loading nothing: hot canon every
 session; `knowledge/` on demand; `activities/` only on narrow signals, since past activity loaded
@@ -92,11 +98,21 @@ mechanism that has to tell them apart reads the same file:
 ```
   .engine-manifest.yml     ← the only answer to "whose path is this?"
        │
-       ├── tools/update.py        what to replace, seed, move, drop
-       ├── tools/check_kit.py     is the declaration coherent
-       ├── tools/lib/portability.py   what ships, therefore what must be portable
-       └── the agent               where a new fact belongs
+       ├─ through tools/lib/manifest.py ─┬── tools/update.py      replace, seed, move, drop
+       │                                 ├── tools/lib/migrate.py · retire.py
+       │                                 ├── tools/check_kit.py   is the declaration coherent
+       │                                 └── tools/lib/portability.py   what ships must be portable
+       │
+       ├─ parsed directly ───────────────┬── install.sh     `kit_remote:`, by sed
+       │                                 └── install.ps1    `kit_remote:`, by regex
+       │
+       └─ read as prose ─────────────────── the agent      where a new fact belongs
 ```
+
+The installers cannot import a python library before python is known to exist, so `kit_remote:`
+has three parsers in three languages that move in lockstep — a [CP-4] obligation
+(`rules/cross-platform.md` → "The clauses"). Changing the manifest's scalar syntax is therefore a
+change to all three.
 
 Five categories — `engine:` `template:` `exclude:` `migrations:` `retired:` — each defined in the
 manifest's own header, with the judgement that follows in `doctrine/kit-ownership.md` →
@@ -118,26 +134,37 @@ and the line that makes this safe is Layer 2: nothing personal is ever written i
 The ordering is what makes it correct:
 
 ```
-  fetch                      the kit remote, never `origin`
+  resolve the kit            by the ADDRESS the manifest declares, name only as fallback
+    ↓
+  fetch
+    ↓
+  read the INCOMING manifest from the ref, before anything is replaced
     ↓
   refuse if dirty            a kit path with unsaved edits is a STOP, not an obstacle
-    ↓
-  seed missing templates     a seed added after somebody cloned still reaches them
+    ↓                        (unless it already matches the ref — nothing there to lose)
+  seed missing templates     what the INCOMING manifest declares, so a new seed lands now
     ↓
   replace kit paths          including paths THIS release adds to engine:
     ↓
-  re-read the manifest       ← it was just replaced; the rest reads the NEW one
+  refuse if nothing resolved `resolved == 0` is a broken update, never an up-to-date base
     ↓
   migrate  ·  retire         independent passes; one refusing never cancels the other
     ↓
-  verify                     VERSION landed, and `resolved == 0` is a broken update
+  verify                     VERSION reads what the kit ships, or nothing is claimed
 ```
+
+Resolving by address rather than by name is what makes renaming the kit survivable: the remote's
+name lives in each base's git config, which no manifest section reaches and no clone carries, so
+it cannot be changed by shipping anything.
 
 Two properties fall out of this shape:
 
-- **Code takes effect one update late; data lands the same run.** The updater ships through the
-  update, so new *logic* only runs next time — which is precisely why moves and removals are
-  declared as manifest data rather than written as code. A base a year stale converges in one run.
+- **Code takes effect one update late; a declaration lands the same run.** The updater ships
+  through the update, so new *logic* only runs next time — which is precisely why moves and
+  removals are declared as manifest data rather than written as code. For that to hold, every
+  pass has to read the manifest being SHIPPED rather than the one the base still has; each place
+  that read the local copy instead was a section arriving one release late while the dry-run
+  promised it now. A base a year stale converges in one run.
 - **Convergent, not sequential.** Migrations are idempotent and keep no ledger of what has been
   applied. A clone that sat untouched for a year has no valid position in an ordered chain; asking
   "is this already done?" of the filesystem always has an answer
@@ -155,8 +182,16 @@ is anybody there to ask (`rules/device-sync.md` →
 "Two questions decide your behaviour — not the name of the device"). An agent that owns a base is a **full owner**: it decides rather than
 waiting, because there is nobody to defer to and unsaved still means lost.
 
-Sync-in is silent and automatic; nobody would choose a stale base. Save-out is proposed once in
-plain language, and after the first yes it happens silently for the rest of the session.
+What that judgement actually requires — when to ask, when to stop asking, and what never to say
+to the person in git's words — is `rules/device-sync.md`, and only there. Copying an operative
+consent model into a second file gives it two places to change and nothing to compare them.
+
+**The base has two remotes, and they are not interchangeable.** `origin` is the person's own
+private copy, the one that makes a phone possible, and `sync.py` is the only thing that pushes to
+it. The kit's address is where `update.py` fetches from, and nothing ever pushes there. The
+installer keeps both so an update has somewhere to come from and a save has somewhere to go, with
+no way to confuse the two — and the updater resolves the kit by address precisely so a base that
+named them unusually still updates from the right one.
 
 ## Layer 4 — the gates
 
@@ -165,9 +200,9 @@ those visible **here**, rather than on a machine nobody can see:
 
 | Gate | Catches | Would otherwise surface as |
 |---|---|---|
-| `check_kit.py` | a rule missing from the list; a removal with no `retired:`; a tool declared nowhere; a version that did not move | a rule silently not in force; a file that never leaves anybody's base |
-| `check_kit.py --authoring` | a seed already shipped being edited; the person's space shipping non-empty; a fork pointing at upstream | somebody else's base, days later |
-| `check_portability.py` | the machine-checkable half of `rules/cross-platform.md` | "it doesn't work on my machine" |
+| `check_kit.py` (any base) | a rule missing from the list; a declared path that is not there; a retirement that contradicts itself; a clause nothing enforces; a pointer into a section that moved — and the portability scan, which it runs itself | a rule silently not in force; a citation aimed at the wrong paragraph |
+| `check_kit.py --authoring` | what only the kit's own repository can know: a removal with no `retired:`; a tool declared nowhere or absent from `tools/_kit.md`; a version that did not move; a seed already shipped being edited; the person's space shipping non-empty; a shell tool with no twin; a fork pointing at upstream | somebody else's base, days later |
+| `check_portability.py` | CP-1, CP-2, CP-3, CP-5, CP-6 over everything that ships. CP-4 is not expressible as a pattern over one file, so the tests and `check_kit.py` carry it | "it doesn't work on my machine" |
 | `tools/tests/` | the machinery itself — including what a read can prove about `install.ps1` | a lost save, or an update that silently applies nothing |
 | `/harness-doctor` | the state of one base, report-only | drift nobody looks for |
 
@@ -179,20 +214,30 @@ nothing**: changing any of this means breaking it on purpose and watching the ga
 ## The invariants
 
 Everything above is negotiable in its details. These are not — each one, broken, produces a
-failure that announces itself only much later:
+failure that announces itself only much later. What holds each one is named, because an invariant
+guarded only by the current author's discipline should be read as exactly that:
 
 1. **One list of the canon.** A second copy is a second truth that drifts silently.
+   *Gated* — `check_kit.py`, on any base.
 2. **The base is one repository, with one branch.** A branch is invisible on a phone; anything
    outside the repository does not exist on the next surface.
+   *Reported, never enforced* — `sync.py` counts branches and `/harness-doctor` warns. Deliberate:
+   a person mid-experiment has a reason, and refusing to sync would strand them.
 3. **Nothing personal in a kit path; nothing of the kit's in a person path.** The first survives
    until the next update, the second can never be corrected by one.
+   *Half gated* — the kit shipping into a person path fails a release. A person's edit already
+   committed into a kit path is overwritten silently; only an UNSAVED one stops the update.
 4. **An update replaces and never merges.** The person cannot adjudicate a conflict in a file
    they did not write.
+   *Gated* — the tests refuse a merge, rebase, reset or stash verb anywhere in the updater.
 5. **`--force` and its quiet equivalents need the person, in the moment.** They destroy exactly
    what git normally refuses to (`rules/git-safety.md`).
+   *Gated for the python tools* — the installers are not scanned, because PowerShell's unrelated
+   `-Force` on `New-Item` would make the scan useless.
 6. **The structure is the agent's burden, never the person's.** A harness whose owner has to
    curate it becomes a chore and dies
    (`rules/harness-stewardship.md` → "The structure is for the AGENT, not the person (HARD RULE)").
+   *Unmechanisable* — no gate can read this, and none pretends to.
 
 ## Where the seams are
 
@@ -202,9 +247,18 @@ For anyone extending this, these are the places designed to be extended, and wha
 - **A new kit tool** → the file, an `engine:` line, a row in `tools/_kit.md`. It must run through
   an interpreter that exists on every platform (`doctrine/tool-vs-instrument.md`); the release
   gate refuses a shell tool with no twin.
-- **A new manifest category** → `tools/lib/manifest.py` is the only reader, but the updater has to
-  learn the verb, and a base with an older updater must degrade safely — an unknown verb stops the
-  run and says to update once more, rather than being skipped.
+- **A new manifest category** → the most expensive seam here, and the one with no safety net.
+  `tools/lib/manifest.py` must list it, `update.py` must read it into the incoming set and run the
+  pass, `check_kit.py` must gate it, and `portability.py` must count it if it ships files — plus
+  the manifest header and `doctrine/kit-ownership.md`. And note what does NOT protect you: an
+  unknown *verb* inside `migrations:` stops the run and says to update once more
+  (`tools/lib/migrate.py`), but an unknown *category* is simply never matched, so an older updater
+  ignores the whole section in silence. Design the category so that being ignored is safe.
+- **A new seed under `template:`** → cheap to add and permanent to get wrong. A seed is created
+  when missing and never rewritten, so whatever the kit puts in one is frozen at each person's
+  clone date forever; `check_kit.py --authoring` fails a release that edits a seed which already
+  shipped. Keep a seed to what will never need to change, and put anything that will into an
+  `engine:` file the seed links to.
 - **A new runtime** → a global entry point pointed at `AGENTS.md`, in both installers
   (`rules/cross-platform.md` → "The clauses", [CP-4]).
 - **A new agent-facing command** → `.claude/commands/`, which the kit owns. Anything authored for

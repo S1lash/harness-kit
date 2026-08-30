@@ -139,11 +139,17 @@ def check_canon_listed_once(root, fail):
         if ("@rules/%s" % name) not in contract:
             fail("rule not listed in AGENTS.md: %s" % name,
                  "It is silently not in force for any runtime.")
-    bridge = (root / "CLAUDE.md").read_text(encoding="utf-8")
-    restated = [n for n in rules if "@rules/%s" % n in bridge]
-    if restated:
-        fail("CLAUDE.md restates the canon list: %s" % ", ".join(restated),
-             "One list, in AGENTS.md. A second copy drifts and nobody notices.")
+    # A second list anywhere, not only in CLAUDE.md. Wherever it sits — a bridge file, a README,
+    # a doctrine page — it is a second truth: it drifts, and the person goes on believing a rule
+    # applies. Two entries is a mention; several is a list.
+    for relpath in portability.shipped_paths(root):
+        if not relpath.endswith(".md") or relpath == "AGENTS.md":
+            continue
+        text = (root / relpath).read_text(encoding="utf-8")
+        restated = [n for n in rules if "@rules/%s" % n in text]
+        if len(restated) > 2:
+            fail("%s restates the canon list: %s" % (relpath, ", ".join(restated)),
+                 "One list, in AGENTS.md. A second copy drifts and nobody notices.")
 
 
 def check_section_references(root, fail):
