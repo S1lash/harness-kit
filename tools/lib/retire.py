@@ -56,6 +56,13 @@ def run(root: Path, dry_run: bool = False, entries: list[str] | None = None) -> 
     if trespassing:
         raise RetirementRefused(trespassing)
 
+    # `safe_entry` has already refused anything that reads as leaving the base. This is the half
+    # text cannot check: a symlink inside the base pointing out of it resolves outside, and every
+    # deletion below is irreversible.
+    escaping = [p for p in retired if not manifest_lib.contains(root, p)]
+    if escaping:
+        raise RetirementRefused(escaping)
+
     removed = []
     for relpath in retired:
         target = root / relpath
@@ -73,6 +80,12 @@ def run(root: Path, dry_run: bool = False, entries: list[str] | None = None) -> 
 
 
 def _prune_empty_parents(root: Path, directory: Path) -> None:
+    """Remove directories a deletion emptied, never climbing past the base.
+
+    The stop condition is containment, not inequality: `directory != root` never becomes true for
+    a path outside the base, so a single escaping entry used to walk UP the filesystem deleting
+    every directory it emptied.
+    """
     """An emptied directory left behind still reads as a place things live."""
     while directory != root and directory.is_dir() and not any(directory.iterdir()):
         directory.rmdir()

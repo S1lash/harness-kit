@@ -57,4 +57,17 @@ def main(argv) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    try:
+        sys.exit(main(sys.argv))
+    except manifest_lib.ManifestMissing as gone:
+        # The base that most needs the recovery command is the one whose manifest is
+        # gone; a traceback is not a recovery command.
+        sys.stderr.write(
+            "the kit/person contract is missing: %s\n"
+            "  Nothing can tell a kit path from a person's without it, so no tool\n"
+            "  here will guess. Restore it with:\n"
+            "    git checkout harness-kit/main -- .engine-manifest.yml\n"
+            "  or, if the machinery is damaged too:\n"
+            "    python3 tools/update.py --self-heal\n" % gone)
+        sys.exit(2)
+

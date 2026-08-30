@@ -107,6 +107,140 @@ class ManifestReaderTests(unittest.TestCase):
             manifest_lib.read_section("nonsense", self.root)
 
 
+class EnclosingRepositoryTests(unittest.TestCase):
+    """Being INSIDE a repository is not the same as BEING one.
+
+    A base with no `.git` of its own, anywhere under another repository, makes `git -C <base>`
+    answer for THAT repository. Demonstrated before the fix: `save` staged the enclosing
+    project's whole worktree — an unrelated `.env` and someone's work-in-progress — committed it
+    and pushed it to that project's remote, and reported "saved" in the plain language the rules
+    require, with nothing in the output naming the repository it had actually written to.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.company = Path(self.tmp.name) / "company"
+        (self.company / "src").mkdir(parents=True)
+        write(self.company, ".env", "DB_PASSWORD=s3cr3t\n")
+        write(self.company, "src/wip.py", "half-finished\n")
+        git(self.company, "init", "-q", "-b", "main")
+        git(self.company, "add", "-A")
+        git(self.company, "commit", "-qm", "the company's repository")
+
+        self.base = self.company / "harness"      # no .git of its own
+        self.base.mkdir()
+        write(self.base, "knowledge/note.md", "the person's note\n")
+        install_tools(self.base)
+        shutil.copy2(KIT_ROOT / "tools" / "sync.py", self.base / "tools")
+
+    def run_sync(self, *args):
+        return subprocess.run([sys.executable, str(self.base / "tools" / "sync.py"), *args],
+                              capture_output=True, text=True, cwd=str(self.base))
+
+    def test_saving_refuses_and_names_the_repository_it_would_have_written_to(self):
+        done = self.run_sync("save", "write down what we decided")
+        self.assertNotEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("NOT ITS OWN", done.stdout)
+        self.assertIn(str(self.company), done.stdout)
+        # Nothing staged: the enclosing repository is exactly as it was.
+        staged = git(self.company, "diff", "--cached", "--name-only").stdout.strip()
+        self.assertEqual(staged, "", "the enclosing repository was staged")
+
+    def test_status_says_so_before_anything_else(self):
+        done = self.run_sync("status")
+        self.assertIn("NOT ITS OWN", done.stdout)
+        self.assertIn("STOP", done.stdout)
+
+    def test_a_base_that_is_its_own_repository_is_unaffected(self):
+        git(self.base, "init", "-q", "-b", "main")
+        done = self.run_sync("status")
+        self.assertNotIn("NOT ITS OWN", done.stdout)
+
+    def test_the_updater_refuses_too(self):
+        done = subprocess.run([sys.executable, str(self.base / "tools" / "update.py"), "--dry-run"],
+                              capture_output=True, text=True, cwd=str(self.base))
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("no history of its own", done.stdout + done.stderr)
+
+
+class ContainmentTests(unittest.TestCase):
+    """A manifest entry becomes a filesystem operation, so containment is the manifest's job.
+
+    Every guard downstream compared strings against `exclude:`, and a string comparison cannot
+    see that `../x` leaves the base or that an absolute path was never in it. Demonstrated before
+    the fix: a `retired:` entry deleted a file outside the base and the parent-pruning walked UP
+    the filesystem removing three more directories; `./knowledge/x` deleted the person's space
+    that `exclude: knowledge/` exists to protect.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / "base"
+        (self.root / "knowledge").mkdir(parents=True)
+        write(self.root, ".engine-manifest.yml",
+              "version: 1.0.0\n\nengine:\n  - rules/\n\nexclude:\n  - knowledge/\n")
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_a_missing_manifest_names_the_recovery_instead_of_a_traceback(self):
+        """The base that most needs `--self-heal` is the one whose manifest is gone.
+
+        Every reader used to open the file itself, so there was no single place the absence could
+        be handled — and all three tools raised FileNotFoundError at a person who cannot act on
+        one. update.py died inside `resolve_remote` before it ever reached the carefully worded
+        refusal written two lines below.
+        """
+        bare = Path(self.tmp.name) / "no-manifest"
+        bare.mkdir()
+        with self.assertRaises(manifest_lib.ManifestMissing):
+            manifest_lib.read_section("engine", bare)
+        # The tools resolve their base from their OWN location, so they have to be run from
+        # inside the manifest-less base rather than pointed at it.
+        install_tools(bare)
+        shutil.copy2(KIT_ROOT / "tools" / "check_portability.py", bare / "tools")
+        # A tracked base, so `update.py` reaches the manifest read rather than stopping earlier
+        # on "not tracked" — the manifest-less case is what is under test here.
+        git(bare, "init", "-q", "-b", "main")
+        for tool in ("update.py", "check_kit.py", "check_portability.py"):
+            done = subprocess.run([sys.executable, str(bare / "tools" / tool)],
+                                  capture_output=True, text=True, cwd=str(bare))
+            self.assertEqual(done.returncode, 2, tool + ": " + done.stdout + done.stderr)
+            self.assertIn("self-heal", done.stderr, tool)
+
+    def test_an_entry_that_leaves_the_base_is_refused_at_the_parser(self):
+        for entry in ("../outside/x", "/etc/passwd", "~/secrets", "C:/Windows", "..", "."):
+            with self.assertRaises(manifest_lib.UnsafeEntry, msg=entry):
+                manifest_lib.safe_entry(entry, "retired")
+
+    def test_a_dot_slash_entry_cannot_slip_past_the_persons_space(self):
+        # `"./knowledge/x".startswith("knowledge/")` is False, so every guard in the kit missed it.
+        self.assertEqual(manifest_lib.safe_entry("./knowledge/x", "retired"), "knowledge/x")
+        self.assertTrue(manifest_lib.covers(["knowledge/"],
+                                            manifest_lib.safe_entry("./knowledge/x")))
+
+    def test_a_directory_entry_keeps_its_trailing_slash(self):
+        self.assertEqual(manifest_lib.safe_entry("knowledge/"), "knowledge/")
+        self.assertEqual(manifest_lib.safe_entry("./a/b/"), "a/b/")
+
+    def test_retirement_refuses_a_path_that_resolves_outside_the_base(self):
+        # Defence in depth behind the parser: a symlink inside the base can still point out.
+        outside = Path(self.tmp.name) / "outside"
+        outside.mkdir()
+        (outside / "victim.txt").write_text("theirs\n", encoding="utf-8")
+        (self.root / "link").symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(retire_lib.RetirementRefused):
+            retire_lib.run(self.root, entries=["link/victim.txt"])
+        self.assertTrue((outside / "victim.txt").exists())
+
+    def test_a_move_may_not_reach_outside_the_base_in_either_direction(self):
+        # Outbound loses the person's file; INBOUND drags an arbitrary file into a repository the
+        # next save commits and pushes, which is an exfiltration primitive, not a misplaced file.
+        for entry in ("move ../outside/id_rsa -> knowledge/harmless.md | tidy",
+                      "move knowledge/secret.md -> ../exfil/secret.md | tidy"):
+            with self.assertRaises(migrate_lib.MigrationRefused, msg=entry):
+                migrate_lib.run(self.root, entries=[entry])
+
+
 class CoverageRuleTests(unittest.TestCase):
     def test_directory_entry_covers_everything_beneath(self):
         self.assertTrue(manifest_lib.covered_by("rules/", "rules/a/b.md"))

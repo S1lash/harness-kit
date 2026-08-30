@@ -64,9 +64,17 @@ def parse(root: Path, entries: list | None = None) -> list:
                 "declared it — run the update once more, now that the machinery itself has been "
                 "replaced." % verb)
         source, _, destination = rest.partition(ARROW)
-        source, destination = source.strip().rstrip("/"), destination.strip().rstrip("/")
-        if not source or not destination:
+        if not source.strip() or not destination.strip():
             raise MigrationRefused("could not read the move in %r" % entry)
+        # A move is two paths, and both are turned straight into filesystem operations. Contain
+        # them exactly as every other manifest path is contained: an outbound move loses the
+        # person's file into the filesystem, and an INBOUND one drags an arbitrary file into a
+        # repository the next save commits and pushes.
+        try:
+            source = manifest_lib.safe_entry(source, "migrations").rstrip("/")
+            destination = manifest_lib.safe_entry(destination, "migrations").rstrip("/")
+        except manifest_lib.UnsafeEntry as refusal:
+            raise MigrationRefused(str(refusal))
         operations.append(Move(source, destination, note.strip()))
     return operations
 
@@ -76,6 +84,11 @@ def _guard(root: Path, operations: list) -> None:
     engine = manifest_lib.read_section("engine", root)
     for move in operations:
         for path, side in ((move.source, "from"), (move.destination, "to")):
+            # The half text cannot check: a symlink inside the base resolving out of it.
+            if not manifest_lib.contains(root, path):
+                raise MigrationRefused(
+                    "%s %s resolves outside the base. A move may only ever happen inside it."
+                    % (side, path))
             if manifest_lib.covers(engine, path):
                 raise MigrationRefused(
                     "%s %s is the kit's own space, which replacement and retirement already "

@@ -284,7 +284,28 @@ def seed_missing_templates(root: Path, ref: str, declared: list) -> list:
     return created
 
 
+def enclosing_repository(root: Path):
+    """The repository this base sits inside, when the base is not one itself.
+
+    `git -C <base>` answers for whichever repository encloses the base, so a base with no `.git`
+    of its own silently borrows another one — and an update would then check kit paths out over
+    that repository's worktree and delete from it.
+    """
+    code, toplevel = git("rev-parse", "--show-toplevel", root=root)[:2]
+    if code != 0 or not toplevel:
+        return None
+    return None if Path(toplevel).resolve() == root.resolve() else toplevel
+
+
 def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
+    enclosing = enclosing_repository(root)
+    if enclosing:
+        return fail(
+            "this base has no history of its own — it sits inside %s." % enclosing,
+            "Every path below would be written into THAT repository, and the retirement pass",
+            "would delete from it. Nothing has been touched. The base has to be its own thing",
+            "before it can be updated: tell the person in their words, then set it up.",
+        )
     remote, url = resolve_remote(remote, root)
     if not url:
         address = manifest_lib.read_kit_remote(root)
@@ -488,4 +509,17 @@ def main(argv: list) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    try:
+        sys.exit(main(sys.argv))
+    except manifest_lib.ManifestMissing as gone:
+        # The base that most needs the recovery command is the one whose manifest is
+        # gone; a traceback is not a recovery command.
+        sys.stderr.write(
+            "the kit/person contract is missing: %s\n"
+            "  Nothing can tell a kit path from a person's without it, so no tool\n"
+            "  here will guess. Restore it with:\n"
+            "    git checkout harness-kit/main -- .engine-manifest.yml\n"
+            "  or, if the machinery is damaged too:\n"
+            "    python3 tools/update.py --self-heal\n" % gone)
+        sys.exit(2)
+

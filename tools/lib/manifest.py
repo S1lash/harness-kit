@@ -25,6 +25,67 @@ _VERSION = re.compile(r"^version:\s*(.+?)\s*$", re.M)
 _KIT_REMOTE = re.compile(r"^kit_remote:\s*(.+?)\s*$", re.M)
 
 
+class ManifestMissing(FileNotFoundError):
+    """The manifest is not on disk. Nothing that reads it can proceed.
+
+    Raised here rather than left as a bare `FileNotFoundError` so the three tools can say what to
+    do about it. The base that most needs `--self-heal` is exactly the base whose manifest is
+    gone, and a traceback is not a recovery instruction.
+    """
+
+
+class UnsafeEntry(ValueError):
+    """A manifest entry that would reach outside the base.
+
+    Every consumer of this file turns entries into filesystem operations — `retire` DELETES them,
+    `migrate` MOVES them, `update` checks them out. The containment guards those passes carry are
+    string comparisons against `exclude:`, and a string comparison cannot see that `../x` leaves
+    the base or that an absolute path was never inside it. So containment belongs here, at the one
+    place every entry passes through, and it is a refusal rather than a silent repair: rewriting
+    `../secrets` into `secrets` would delete a different real file and report success.
+    """
+
+
+def safe_entry(raw: str, section: str = "") -> str:
+    """One manifest entry, normalised, or a refusal. The only way an entry becomes a path.
+
+    Normalises `./x` to `x` — the same path written two ways, and the second slips past every
+    `startswith` check in the kit. Refuses anything absolute, anything with a `..` component, and
+    anything with a Windows drive or UNC prefix, because no legitimate entry needs one and every
+    illegitimate one does.
+    """
+    entry = raw.strip().replace("\\", "/")
+    where = " in %s:" % section if section else ":"
+    if not entry:
+        raise UnsafeEntry("an empty manifest entry%s nothing can be done with it" % where)
+    if entry.startswith("/") or entry.startswith("~"):
+        raise UnsafeEntry("an absolute manifest entry%s %r — entries are relative to the base"
+                          % (where, raw))
+    if len(entry) > 1 and entry[1] == ":":
+        raise UnsafeEntry("a drive-qualified manifest entry%s %r" % (where, raw))
+    trailing = "/" if entry.endswith("/") else ""
+    parts = [p for p in entry.split("/") if p not in ("", ".")]
+    if ".." in parts:
+        raise UnsafeEntry("a manifest entry that climbs out of the base%s %r" % (where, raw))
+    if not parts:
+        raise UnsafeEntry("a manifest entry that names the base itself%s %r" % (where, raw))
+    return "/".join(parts) + trailing
+
+
+def contains(root: Path, relpath: str) -> bool:
+    """Whether a path resolves inside the base. The check a string comparison cannot make.
+
+    Defence in depth behind `safe_entry`: a symlink inside the base can still point out of it, and
+    that is invisible to any amount of text inspection.
+    """
+    try:
+        target = (root / relpath).resolve()
+        base = root.resolve()
+    except OSError:
+        return False
+    return target == base or base in target.parents
+
+
 def repo_root() -> Path:
     """The base root — the parent of `tools/`, resolved from this file."""
     return Path(__file__).resolve().parents[2]
@@ -34,9 +95,23 @@ def manifest_path(root: Path | None = None) -> Path:
     return (root or repo_root()) / MANIFEST_NAME
 
 
+def manifest_text(root: Path | None = None) -> str:
+    """The manifest's text. The single read — every other reader goes through this one.
+
+    Not named `read_text`: at module level that reads as `Path.read_text` to everything that
+    looks at this file, the portability gate included, and a name that has to be explained is
+    the wrong name.
+    """
+    path = manifest_path(root)
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise ManifestMissing(str(path))
+
+
 def read_section(section: str, root: Path | None = None) -> list[str]:
     """One list-shaped section of the manifest on disk."""
-    return parse_section(section, manifest_path(root).read_text(encoding="utf-8"))
+    return parse_section(section, manifest_text(root))
 
 
 def parse_section(section: str, text: str) -> list[str]:
@@ -63,7 +138,10 @@ def parse_section(section: str, text: str) -> list[str]:
         if match:
             value = _INLINE_COMMENT.sub("", match.group(1)).strip().strip('"').strip("'")
             if value:
-                entries.append(value)
+                # `migrations:` entries are operations (`move a -> b | note`), not paths; their
+                # own parser checks each side. Everything else IS a path and is contained here.
+                entries.append(value if section == "migrations"
+                               else safe_entry(value, section))
     return entries
 
 
@@ -76,12 +154,12 @@ def declares_section(section: str, root: Path | None = None) -> bool:
     update would report success having done nothing.
     """
     pattern = re.compile(r"^%s\s*:" % re.escape(section), re.M)
-    return bool(pattern.search(manifest_path(root).read_text(encoding="utf-8")))
+    return bool(pattern.search(manifest_text(root)))
 
 
 def read_version(root: Path | None = None) -> str:
     """The kit version the manifest declares, or an empty string."""
-    match = _VERSION.search(manifest_path(root).read_text(encoding="utf-8"))
+    match = _VERSION.search(manifest_text(root))
     return match.group(1).strip() if match else ""
 
 
@@ -97,7 +175,7 @@ def covers(entries, relpath: str) -> bool:
 
 def read_kit_remote(root: Path | None = None) -> str:
     """The kit's own address, so a base that lost the remote is reconnected without guessing."""
-    match = _KIT_REMOTE.search(manifest_path(root).read_text(encoding="utf-8"))
+    match = _KIT_REMOTE.search(manifest_text(root))
     return match.group(1).strip() if match else ""
 
 

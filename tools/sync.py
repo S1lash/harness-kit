@@ -53,6 +53,7 @@ def read_state():
     state = {
         "base": str(BASE),
         "is_repo": git_ok("rev-parse", "--is-inside-work-tree") == "true",
+        "enclosing": None,
         "branch": None,
         "remote_url": None,
         "upstream": None,
@@ -65,6 +66,16 @@ def read_state():
         "branches": 1,
     }
     if not state["is_repo"]:
+        return state
+
+    # Being INSIDE a repository is not the same as BEING one. A base with no `.git` of its own,
+    # sitting anywhere under another repository, makes git walk up and answer for that one — so
+    # every command here operates on somebody else's repository, and `save` stages and pushes its
+    # entire worktree. Nothing in the output would say so on its own: the base path printed is
+    # the one the person expects.
+    toplevel = git_ok("rev-parse", "--show-toplevel")
+    if toplevel and Path(toplevel).resolve() != BASE.resolve():
+        state["enclosing"] = toplevel
         return state
 
     branch = git_ok("rev-parse", "--abbrev-ref", "HEAD")
@@ -103,6 +114,13 @@ def describe(state, action_taken, directive):
     lines = ["%s base: %s" % (PREFIX, state["base"])]
     if not state["is_repo"]:
         lines.append("state: this folder is not tracked at all — nothing can travel between surfaces")
+        lines.append("YOU MUST: %s" % directive)
+        return "\n".join(lines)
+
+    if state["enclosing"]:
+        lines.append("state: NOT ITS OWN — this base has no history of its own and sits inside")
+        lines.append("       %s" % state["enclosing"])
+        lines.append("       Saving here would write into that project and send it wherever it goes.")
         lines.append("YOU MUST: %s" % directive)
         return "\n".join(lines)
 
@@ -149,6 +167,11 @@ def directive_for(state):
     if not state["is_repo"]:
         return ("tell the person their base is not being kept anywhere and offer to set that up "
                 "(plain language — no git words)")
+    if state["enclosing"]:
+        return ("STOP — do not save. This base has no history of its own and sits inside another "
+                "project's, so everything here would be saved into THAT project and sent wherever "
+                "it goes. Tell the person their base was never set up as its own thing, in their "
+                "words, and set it up before saving anything")
     if state["detached"]:
         return "put the base back on its single branch before doing anything else"
     if not state["remote_url"]:
@@ -191,7 +214,7 @@ def mode_status(mutate_when_safe):
 
 def mode_pull():
     state = read_state()
-    if not state["is_repo"] or not state["remote_url"]:
+    if state["enclosing"] or not state["is_repo"] or not state["remote_url"]:
         print(describe(state, None, directive_for(state)))
         return 1
     if state["unsaved"]:
@@ -255,7 +278,9 @@ def push_refusal_directive(err):
 
 def mode_save(message):
     state = read_state()
-    if not state["is_repo"]:
+    # Refuse before anything is staged: `git add -A` here would stage the enclosing repository's
+    # whole worktree, and the push that follows would send it wherever that repository goes.
+    if state["enclosing"] or not state["is_repo"]:
         print(describe(state, None, directive_for(state)))
         return 1
     if not state["identity"]:
