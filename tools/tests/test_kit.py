@@ -26,6 +26,7 @@ sys.path.insert(0, str(KIT_ROOT / "tools"))
 from lib import manifest as manifest_lib  # noqa: E402
 from lib import migrate as migrate_lib  # noqa: E402
 from lib import portability  # noqa: E402
+import check_kit  # noqa: E402
 from lib import retire as retire_lib  # noqa: E402
 
 TOOL_FILES = ("update.py", "check_kit.py")
@@ -1004,6 +1005,44 @@ class PortabilityGateTests(unittest.TestCase):
         self.assertEqual(self.clauses("a.md", wrapped), [])
         quoted = "```text\n```bash\nmapfile -t x < f\n```\n"
         self.assertEqual(self.clauses("a.md", quoted), [])
+
+    # -- the binding between a clause and what enforces it --------------------
+    def test_a_gate_rule_citing_an_undefined_clause_fails_the_kit(self):
+        """The direction the release gate had no test for.
+
+        A rule table can invent an id, and the failure it prints then points at a contract nobody
+        wrote — the person reading it has a regex and nothing to look up.
+        """
+        rules = portability.LINE_RULES
+        invented = portability.Rule("CP-99", "shell", r"\bnothing\b", "invented", "nothing")
+        portability.LINE_RULES = rules + (invented,)
+        self.addCleanup(setattr, portability, "LINE_RULES", rules)
+        self.assertIn("CP-99", portability.clauses())
+        failures = []
+        check_kit.check_clause_ids(KIT_ROOT, lambda m, w="": failures.append(m))
+        self.assertTrue(any("CP-99" in m for m in failures), failures)
+
+    def test_a_clause_nothing_enforces_fails_the_kit(self):
+        """Enforcement drifting out from under a written clause is the silent half.
+
+        The rule still reads as guarded, the release still passes, and the only evidence is a
+        check that no longer exists.
+        """
+        rules = portability.LINE_RULES
+        portability.LINE_RULES = tuple(r for r in rules if r.clause != "CP-6")
+        self.addCleanup(setattr, portability, "LINE_RULES", rules)
+        failures = []
+        check_kit.check_clause_ids(KIT_ROOT, lambda m, w="": failures.append(m))
+        self.assertTrue(any("CP-6" in m for m in failures), failures)
+
+    def test_a_clause_the_tests_carry_instead_of_the_scanner_is_still_enforced(self):
+        # Two mechanisms can hold a clause. [CP-4] — installer twins in lockstep — is not
+        # expressible as a pattern over one file, so the test suite carries it, and the gate has
+        # to count that as enforcement rather than demand a scanner rule for everything.
+        self.assertNotIn("CP-4", portability.clauses())
+        failures = []
+        check_kit.check_clause_ids(KIT_ROOT, lambda m, w="": failures.append(m))
+        self.assertEqual(failures, [])
 
     def test_the_kit_it_ships_today_is_clean(self):
         self.assertEqual([str(f) for f in portability.scan(KIT_ROOT)], [])

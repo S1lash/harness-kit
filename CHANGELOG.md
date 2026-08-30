@@ -201,6 +201,17 @@ The platform layer: the cross-platform rule stops depending on somebody remember
 - `check_kit.py` binds clause IDs in both directions: a clause the canon defines that nothing
   enforces, and a gate rule citing a clause nobody wrote, are both failures. Neither was previously
   visible, and the first is the shape of a rule everyone believes is guarded.
+- `install.ps1` identified the kit's remote by matching the string "harness-kit"; it now compares
+  against `kit_remote:` in the manifest, as `install.sh` always did. A person whose own base
+  repository carries that name — the name the installer suggests for it — would have had their own
+  `origin` moved aside, after which nothing they did could be saved anywhere.
+- The installer's python check accepted `python` or `py -3`, but the session hook runs the literal
+  name `python3` and a JSON hook cannot try three names. It reported OK on machines where the hook
+  could never fire; it now tests what actually runs, and `CLAUDE.md` says how an agent detects a
+  hook that did not fire.
+- A static check that every variable `install.ps1` reads is one it set. bash stops on the spot with
+  `set -u`; PowerShell substitutes `$null` and carries on, so an over-wide edit surfaces several
+  steps later on somebody else's Windows machine.
 - The symlink machinery is gone from `install.sh` and `install.ps1`. It was the one mechanism that
   could not be made to behave the same on all three platforms — Git Bash writes a text stub unless
   an environment variable is set, a dangling link is invisible to `Test-Path`, and `Remove-Item` on

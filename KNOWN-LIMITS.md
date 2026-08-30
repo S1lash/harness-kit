@@ -20,3 +20,14 @@
 - **Global agent wiring is reported, not repaired.** An update detects a runtime whose global entry
   no longer names this base and says so; re-running the installer for that runtime is a person's
   decision, because it writes outside the folder they chose.
+- **The portability gate reads code, so it can be fooled by code that hides.** It is a static
+  scanner, and three shapes are deliberately out of reach rather than accidentally missed: a
+  construct split mid-word across a shell continuation (`map\` + newline + `file`), a command name
+  assembled at runtime from a variable, and a path built by string interpolation
+  (`f"/home/{user}/base"` — usually not the hardcoded case at all). Chasing any of them would cost
+  more precision than it buys, and the honest limit is that a green gate means "nothing recognisable
+  is wrong", not "this is portable". A person's own review is still the outer layer.
+- **A shipped file the tokenizer cannot parse falls back to line-by-line reading.** A `.py` that
+  will not tokenize is a bigger problem than this gate, and it degrades to the weaker analysis
+  rather than silently scanning nothing — but its docstrings are then matched as code, which shows
+  up as false findings and not as silence. That is the intended direction to fail in.
