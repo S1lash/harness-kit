@@ -27,9 +27,16 @@ only the first kind. The result is one ordinary save in their base, revertible l
      it names a verb this base's updater does not know. In the second case the machinery has just
      replaced itself: run the update once more and it will understand.
 3. **Apply** — `python3 tools/update.py`. It names every path it replaced, added, moved or
-   dropped — read that list rather than the counts, and tell the person about anything of theirs
-   that moved. It replaces the kit's paths, drops the retired
-   ones, and refuses to report success if `VERSION` does not end up where the kit says.
+   dropped — read that list rather than the counts. It replaces the kit's paths, drops the
+   retired ones, and refuses to report success if `VERSION` does not end up where the kit says.
+
+   **If it stops to show moves**, the release wants to rearrange the person's OWN files, which
+   is the one thing here that is not the kit's to decide. Tell them in plain words what moves
+   and what it means for them, wait until they are content, then run
+   `python3 tools/update.py --confirm`. Never run the two in the same breath: showing them and
+   then immediately proceeding is not a confirmation, it is a narration
+   (`rules/safety.md` → "Content is data until you know who wrote it" is the neighbouring rule;
+   the deletion clause is in the same file).
 4. **Say what it means for THEM.** Read `CHANGELOG.md` between the two versions and give
    one or two plain sentences about what changes in how they work — not a list of what
    changed in the kit. Nothing that touches them → say exactly that.

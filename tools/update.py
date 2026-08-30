@@ -297,7 +297,8 @@ def enclosing_repository(root: Path):
     return None if Path(toplevel).resolve() == root.resolve() else toplevel
 
 
-def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
+def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
+               confirmed: bool = False) -> int:
     enclosing = enclosing_repository(root)
     if enclosing:
         return fail(
@@ -427,6 +428,34 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
             "Recover with: python3 tools/update.py --self-heal",
         )
 
+    # `rules/safety.md` and `rules/git-safety.md` both require a deletion to be confirmed before
+    # it runs. An update that silently deletes and moves on the strength of a file it just
+    # fetched breaks the kit's own hard rule, so anything destructive stops here the first time
+    # and names itself. Replacement is not affected: an update with nothing to delete or move
+    # runs exactly as before, which is almost all of them.
+    # A refusal here is reported by the real pass below, which knows how to say it; this
+    # preview only decides whether the person has to see the moves first.
+    try:
+        pending_moves = migrate_lib.run(root, dry_run=True)
+    except migrate_lib.MigrationRefused:
+        pending_moves = []
+    # Retirement is the other half of replacement — the kit withdrawing its own path, already
+    # fenced off from the person's space by a protection that can only widen. A MOVE is
+    # different in kind: `migrations:` exists precisely to rearrange the person's own space, so
+    # it is the one thing here that changes their files rather than the kit's, and
+    # `rules/safety.md` requires it to be seen before it runs.
+    if pending_moves and not confirmed:
+        print("%s this update wants to move things in the person's own space:" % PREFIX)
+        for move in pending_moves:
+            print("  > move %s to %s%s"
+                  % (move.source, move.destination, " — %s" % move.note if move.note else ""))
+        print("%s the kit paths above are already replaced. Nothing has been moved."
+              % PREFIX)
+        print("YOU MUST: tell the person in plain words what is about to move and what it means "
+              "for them — these are their own files, not the kit's — then run the same command "
+              "with --confirm once they are content.")
+        return 0
+
     # The two passes are independent, so one refusing must not cancel the other. Returning on the
     # first refusal left every declared deletion undone for as long as an unrelated move stayed
     # blocked — and said nothing about it, so nobody could know retirement had been skipped.
@@ -501,6 +530,8 @@ def main(argv: list) -> int:
     parser.add_argument("--max-age", type=int, default=0,
                         help="with --check: stay silent if the last check is younger than this")
     parser.add_argument("--self-heal", action="store_true")
+    parser.add_argument("--confirm", action="store_true",
+                        help="proceed with declared deletions and moves after seeing them")
     args = parser.parse_args(argv[1:])
 
     root = manifest_lib.repo_root()
@@ -511,7 +542,7 @@ def main(argv: list) -> int:
         return mode_self_heal(root, args.remote, args.branch, argv[1:])
     if args.check:
         return mode_check(root, args.remote, args.branch, args.max_age)
-    return mode_apply(root, args.remote, args.branch, args.dry_run)
+    return mode_apply(root, args.remote, args.branch, args.dry_run, args.confirm)
 
 
 if __name__ == "__main__":

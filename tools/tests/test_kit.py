@@ -753,6 +753,34 @@ class UpdateEndToEndTests(unittest.TestCase):
         self.assertTrue((self.base / "mine" / "notes.md").exists(),
                         "a release deleted the person's own space")
 
+    def test_moving_the_persons_own_files_is_shown_before_it_happens(self):
+        """`rules/safety.md` requires a deletion or move to be seen before it runs.
+
+        Replacement is the kit's own space and needs no ceremony, but `migrations:` exists
+        precisely to rearrange the PERSON's — and an update carried them out on the strength of a
+        manifest it had just fetched, reporting them afterwards.
+        """
+        declared = MANIFEST.replace(
+            "retired:", "migrations:\n  - move pointers -> knowledge/pointers | note\n\nretired:")
+        write(self.kit, ".engine-manifest.yml", declared)
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "declare a move")
+        write(self.base, "pointers/stack.md", "theirs\n")
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "their pointers")
+
+        shown = run_update(self.base)
+        self.assertEqual(shown.returncode, 0, shown.stdout + shown.stderr)
+        self.assertIn("their own files, not the kit's", shown.stdout)
+        self.assertTrue((self.base / "pointers" / "stack.md").exists(),
+                        "the move happened without being confirmed")
+        # The replacement half still ran: only the person's own space waits on them.
+        self.assertEqual((self.base / "rules/canon.md").read_text(), "new canon\n")
+
+        done = run_update(self.base, "--confirm")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertTrue((self.base / "knowledge" / "pointers" / "stack.md").exists())
+
     def test_a_seed_this_release_introduces_lands_in_the_run_that_ships_it(self):
         """The asymmetry that hid this: the same case for `engine:` was tested and this was not.
 
@@ -830,7 +858,7 @@ class UpdateEndToEndTests(unittest.TestCase):
         git(self.base, "add", "-A")
         git(self.base, "commit", "-qm", "a destination already occupied")
 
-        done = run_update(self.base)
+        done = run_update(self.base, "--confirm")
         self.assertNotEqual(done.returncode, 0, "a blocked move must not report success")
         self.assertTrue((self.base / "pointers/stack.md").exists(), "the move must not be forced")
         self.assertFalse((self.base / "old").exists(),
@@ -850,7 +878,13 @@ class UpdateEndToEndTests(unittest.TestCase):
         git(self.base, "add", "-A")
         git(self.base, "commit", "-qm", "their pointers")
 
-        done = run_update(self.base)
+        # Shown first: a move rearranges the person's own files, so they see it before it runs.
+        shown = run_update(self.base)
+        self.assertEqual(shown.returncode, 0, shown.stdout + shown.stderr)
+        self.assertIn("move pointers to knowledge/pointers", shown.stdout)
+        self.assertTrue((self.base / "pointers").exists(), "it moved without being confirmed")
+
+        done = run_update(self.base, "--confirm")
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertFalse((self.base / "pointers").exists())
         self.assertEqual((self.base / "knowledge/pointers/stack.md").read_text(), "theirs\n")
@@ -2093,7 +2127,10 @@ class ShippedKitTests(unittest.TestCase):
         # the release gate. So the instruction itself has to close the hole: a rule on disk that
         # the list omits still binds, and the session that notices repairs it.
         contract = (KIT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("not named above is canon too", contract)
+        self.assertIn("not named above is a rule the list has LOST", contract)
+        # And that adopting one is a decision, not a step: a file that simply appeared in
+        # `rules/` is a claim on every future session that nobody made.
+        self.assertIn("Confirm before you adopt one", contract)
         self.assertIn("index", contract)
 
     def test_safety_and_git_safety_do_not_restate_each_other(self):
