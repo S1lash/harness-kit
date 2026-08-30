@@ -775,6 +775,18 @@ retired: []
         self.assertEqual(done.returncode, 1)
         self.assertIn("seed", done.stderr)
 
+    def test_a_rule_whose_name_hides_inside_another_is_still_caught(self):
+        # The regression: `safety.md` is a substring of `git-safety.md`, so searching AGENTS.md for
+        # the bare filename reported the rule as listed when nothing listed it. The gate said the
+        # kit was ready to ship and the rule reached no runtime at all.
+        write(self.root, "rules/git-canon.md", "the long one\n")
+        write(self.root, "rules/canon.md", "the short one whose name hides in the long one\n")
+        write(self.root, "AGENTS.md", "canon:\n@rules/git-canon.md\n")
+        git(self.root, "add", "-A")
+        done = self.gate()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("canon.md", done.stderr)
+
     def test_the_kits_own_notes_in_the_persons_space_fail_the_release(self):
         write(self.root, ".engine-manifest.yml",
               self.GATE_MANIFEST.replace("exclude: []", "exclude:\n  - notes/"))
