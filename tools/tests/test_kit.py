@@ -27,6 +27,7 @@ from lib import manifest as manifest_lib  # noqa: E402
 from lib import migrate as migrate_lib  # noqa: E402
 from lib import portability  # noqa: E402
 import check_kit  # noqa: E402
+import update as update_module  # noqa: E402
 from lib import retire as retire_lib  # noqa: E402
 
 TOOL_FILES = ("update.py", "check_kit.py")
@@ -201,6 +202,88 @@ class UpdateEndToEndTests(unittest.TestCase):
         self.assertTrue((self.base / "mine/notes.md").exists())
         self.assertFalse((self.base / "old").exists(), "a retired path must be dropped")
 
+    def test_the_kit_is_found_by_its_address_whatever_the_remote_is_called(self):
+        """Renaming the product must not strand every base that already exists.
+
+        The remote's NAME lives in each base's git config, which no manifest section reaches and
+        no clone carries — so it cannot be changed by shipping anything. If the updater looked the
+        kit up by name, renaming the kit would silently cut off every base already in the world,
+        and the fix could only travel through the channel it had just broken. The address is the
+        one identifier the kit itself publishes and can move on purpose.
+        """
+        declared = MANIFEST.replace("version: 1.0.0",
+                                    "version: 1.0.0\n\nkit_remote: %s" % self.kit, 1)
+        write(self.kit, ".engine-manifest.yml", declared)
+        write(self.base, ".engine-manifest.yml", declared)
+        git(self.kit, "add", "-A"); git(self.kit, "commit", "-qm", "declare the address")
+        git(self.base, "add", "-A"); git(self.base, "commit", "-qm", "same address")
+
+        # The base calls it something else entirely — an older name, or one the person chose.
+        git(self.base, "remote", "remove", "harness-kit")
+        git(self.base, "remote", "add", "some-other-name", str(self.kit))
+
+        done = run_update(self.base)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual((self.base / "rules/canon.md").read_text(), "new canon\n")
+
+    def test_two_spellings_of_one_address_are_one_repository(self):
+        """The same repository is written several ways, and all of them have to match.
+
+        A manifest declares `https://host/owner/kit`; git config commonly holds
+        `https://host/owner/kit.git` because that is what `git clone` records. Compared literally
+        they differ, the kit is not recognised, and the base falls back to matching by name —
+        which is exactly the fragility this replaced.
+        """
+        for a, b in (("https://h/o/kit", "https://h/o/kit.git"),
+                     ("https://h/o/kit/", "https://h/o/kit"),
+                     ("https://H/O/Kit", "https://h/o/kit")):
+            self.assertTrue(update_module.same_repository(a, b), "%s vs %s" % (a, b))
+        for a, b in (("https://h/o/kit", "https://h/o/other"),
+                     ("https://h/o/kit", ""), ("", "")):
+            self.assertFalse(update_module.same_repository(a, b), "%s vs %s" % (a, b))
+
+    def test_the_persons_own_copy_is_never_mistaken_for_the_kit(self):
+        """Every base has two remotes, and one of them is the person's private copy.
+
+        `origin` is theirs and is listed first. Matching an address loosely — or not at all —
+        makes the updater replace this base's kit paths out of the person's OWN repository, which
+        looks like a successful update and is a silent corruption of the standard.
+        """
+        declared = MANIFEST.replace("version: 1.0.0",
+                                    "version: 1.0.0\n\nkit_remote: %s" % self.kit, 1)
+        write(self.kit, ".engine-manifest.yml", declared)
+        write(self.base, ".engine-manifest.yml", declared)
+        git(self.kit, "add", "-A"); git(self.kit, "commit", "-qm", "declare the address")
+
+        # The person's own private copy, holding an older canon, added FIRST.
+        theirs = Path(self.tmp.name) / "their-copy"
+        theirs.mkdir()
+        write(theirs, "rules/canon.md", "the person's stale copy\n")
+        write(theirs, "VERSION", "0.0.1\n")
+        write(theirs, ".engine-manifest.yml", declared)
+        git(theirs, "init", "-q", "-b", "main")
+        git(theirs, "add", "-A"); git(theirs, "commit", "-qm", "their copy")
+
+        # `upstream` is an ordinary name for it, and git lists remotes alphabetically — so the
+        # person's own copy comes FIRST. Anything that picks a remote by position rather than by
+        # address lands on theirs.
+        git(self.base, "remote", "remove", "harness-kit")
+        git(self.base, "remote", "add", "origin", str(theirs))
+        git(self.base, "remote", "add", "upstream", str(self.kit))
+        git(self.base, "add", "-A"); git(self.base, "commit", "-qm", "two remotes")
+
+        done = run_update(self.base)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual((self.base / "rules/canon.md").read_text(), "new canon\n",
+                         "the update came from the person's own copy, not from the kit")
+        self.assertEqual((self.base / "VERSION").read_text().strip(), "1.0.0")
+
+    def test_a_base_with_no_kit_remote_at_all_still_says_what_to_do(self):
+        git(self.base, "remote", "remove", "harness-kit")
+        done = run_update(self.base)
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("not connected to the kit", done.stdout + done.stderr)
+
     def test_a_seed_added_after_their_clone_still_reaches_them(self):
         # The gap this closes: templates never sync, so a seed introduced after somebody cloned
         # reached them never — while the canon arriving in the same update named it as if it
@@ -210,6 +293,28 @@ class UpdateEndToEndTests(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertEqual((self.base / "seed.md").read_text(), "pristine seed\n")
         self.assertIn("a seed this base never received", done.stdout)
+
+    def test_a_seed_this_release_introduces_lands_in_the_run_that_ships_it(self):
+        """The asymmetry that hid this: the same case for `engine:` was tested and this was not.
+
+        The existing seeding test deletes a seed the base's OWN manifest already declares, which
+        never exercises a template the incoming release introduces — the headline case the
+        seeding docstring promises. Preview and apply disagreed: the dry-run read the incoming
+        list and said the seed would arrive, the run read the local one and did not deliver it.
+        """
+        widened = MANIFEST.replace("  - seed.md", "  - seed.md\n  - newseed.md")
+        write(self.kit, ".engine-manifest.yml", widened)
+        write(self.kit, "newseed.md", "a seed this release introduces\n")
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "introduce a seed")
+
+        preview = run_update(self.base, "--dry-run")
+        self.assertIn("newseed.md", preview.stdout, "the dry-run did not promise the seed")
+        done = run_update(self.base)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertTrue((self.base / "newseed.md").exists(),
+                        "the dry-run promised a seed the run did not deliver")
+        self.assertIn("newseed.md", done.stdout)
 
     def test_a_path_this_release_adds_to_engine_lands_in_the_run_that_ships_it(self):
         """The manifest is itself one of the paths being replaced.
@@ -500,12 +605,28 @@ class DivergenceAndOutageTests(unittest.TestCase):
         self.assertIn("on-the-phone.md", landed)
 
     def test_no_force_or_rebase_is_ever_issued(self):
-        source = (KIT_ROOT / "tools" / "sync.py").read_text(encoding="utf-8")
-        # Look for them as passed ARGUMENTS, not as words: the file explains in prose that it
-        # never rebases, and a prose ban must not read as a violation of itself.
-        for banned in ('"--force"', '"-f"', '"--hard"', '"rebase"', '"--force-with-lease"'):
+        # Every python tool that touches git, not just this one: the invariant is about what the
+        # kit does to a person's repository, and it does not stop at one file. Look for them as
+        # passed ARGUMENTS, not as words — these files explain in prose that they never rebase,
+        # and a prose ban must not read as a violation of itself.
+        for name in ("sync.py", "update.py", "check_kit.py"):
+            source = (KIT_ROOT / "tools" / name).read_text(encoding="utf-8")
+            for banned in ('"--force"', '"-f"', '"--hard"', '"rebase"', '"--force-with-lease"'):
+                self.assertNotIn(banned, source, "%s in %s disables the protection that makes "
+                                                 "divergence recoverable" % (banned, name))
+
+    def test_the_updater_replaces_and_never_merges(self):
+        """The invariant the whole update design rests on, and nothing was checking it.
+
+        An update must never hand the person a conflict inside a file they did not write. That
+        holds today only because the updater issues `checkout` and nothing else — a property no
+        gate stated, so a merge added here would have shipped green.
+        """
+        source = (KIT_ROOT / "tools" / "update.py").read_text(encoding="utf-8")
+        for banned in ('"merge"', '"cherry-pick"', '"stash"', '"reset"', '"revert"'):
             self.assertNotIn(banned, source,
-                             "%s disables the protection that makes divergence recoverable" % banned)
+                             "%s can leave the person adjudicating a kit file they never wrote"
+                             % banned)
 
     def test_two_different_bases_pointed_at_one_place_are_named_not_merged(self):
         # A person who runs the installer again on a second machine as a NEW base, then points it

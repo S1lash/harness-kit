@@ -99,11 +99,38 @@ def fail(message: str, *followups: str) -> int:
     return 2
 
 
-def require_remote(remote: str, root: Path):
+def same_repository(a: str, b: str) -> bool:
+    """Two URLs naming the same repository. Mirror of `same_repo` in install.sh."""
+    if not a or not b:
+        return False
+    normalise = lambda url: url.strip().rstrip("/").removesuffix(".git").lower()
+    return normalise(a) == normalise(b)
+
+
+def resolve_remote(remote: str, root: Path):
+    """(name, url) of the remote this base updates from — found by ADDRESS, then by name.
+
+    The name is a convenience, never the contract. The installer already identifies the kit by the
+    address the manifest declares rather than by whether a name contains a particular word, and
+    this is the other half of that: a base whose kit remote was set up under some other name, or
+    whose kit is renamed as a product, still updates. Only the address is stable — it is the one
+    thing the kit itself publishes and can move deliberately (`reconcile_kit_remote`).
+
+    Falls back to the configured name so a base whose manifest declares no address, or one whose
+    remote is a local path used for testing, behaves exactly as before.
+    """
+    declared = manifest_lib.read_kit_remote(root)
+    if declared:
+        for name in (git_ok("remote", root=root) or "").split():
+            url = git_ok("remote", "get-url", name, root=root)
+            if same_repository(url, declared):
+                return name, url
     url = git_ok("remote", "get-url", remote, root=root)
-    if url:
-        return url
-    return None
+    return (remote, url) if url else (remote, None)
+
+
+def require_remote(remote: str, root: Path):
+    return resolve_remote(remote, root)[1]
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +147,8 @@ def mode_check(root: Path, remote: str, branch: str, max_age: int) -> int:
         except (ValueError, KeyError, OSError):
             pass  # unreadable cache is not a reason to skip the check
 
-    if not require_remote(remote, root):
+    remote, url = resolve_remote(remote, root)
+    if not url:
         return 0  # a base with no kit remote has nothing to check against
 
     if git("fetch", "--quiet", remote, branch, root=root,
@@ -143,6 +171,7 @@ def mode_check(root: Path, remote: str, branch: str, max_age: int) -> int:
 
 
 def mode_self_heal(root: Path, remote: str, branch: str, argv: list) -> int:
+    remote = resolve_remote(remote, root)[0]
     print("%s self-heal: restoring the updater from %s/%s" % (PREFIX, remote, branch))
     if git("fetch", remote, branch, root=root, timeout=NETWORK_TIMEOUT_SECONDS)[0] != 0:
         return fail("could not reach the kit remote to repair from.")
@@ -235,7 +264,7 @@ def stale_global_wiring(root: Path) -> list:
     return stale
 
 
-def seed_missing_templates(root: Path, ref: str) -> list:
+def seed_missing_templates(root: Path, ref: str, declared: list) -> list:
     """Create the seed files this base never received; never touch one it already has.
 
     A template seeds at clone time and an update leaves it alone — that is what keeps a person's
@@ -243,9 +272,14 @@ def seed_missing_templates(root: Path, ref: str) -> list:
     canon arriving in the same update names it as though it were there. Creating only what is
     absent keeps both properties: nothing of theirs is overwritten, and the file the rules point
     at exists.
+
+    `declared` is the template list from the manifest being SHIPPED, not the one on disk. Reading
+    the local copy made the promise above false in its own headline case: a seed introduced by
+    this release is not in the manifest the base still has, so it arrived one update late — while
+    the dry-run, which already read the incoming list, promised it now.
     """
     created = []
-    for relpath in manifest_lib.read_section("template", root):
+    for relpath in declared:
         if (root / relpath).exists() or not ref_has_path(ref, relpath, root):
             continue
         git("checkout", ref, "--", relpath, root=root)
@@ -255,7 +289,8 @@ def seed_missing_templates(root: Path, ref: str) -> list:
 
 
 def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
-    if not require_remote(remote, root):
+    remote, url = resolve_remote(remote, root)
+    if not url:
         address = manifest_lib.read_kit_remote(root)
         return fail(
             "this base is not connected to the kit it came from, so it cannot be updated.",
@@ -308,7 +343,7 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
                                                           version_upstream or "?"))
         return 0
 
-    seeded = seed_missing_templates(root, ref)
+    seeded = seed_missing_templates(root, ref, incoming["template"])
     resolved, absent, changed = 0, 0, 0
     changed_paths, added_paths = [], []
 
