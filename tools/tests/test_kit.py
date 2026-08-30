@@ -692,10 +692,27 @@ class SelfHealTests(unittest.TestCase):
         git(self.base, "commit", "-qm", "their base")
         git(self.base, "remote", "add", "harness-kit", str(self.kit))
 
+    def test_a_base_that_declares_no_kit_paths_is_not_treated_as_corrupt(self):
+        """`engine: []` and a lost `engine:` key read the same and mean opposite things.
+
+        A base can legitimately share no paths with the kit — its own canon, developed past the
+        kit's, with the machinery present so that adopting a path later is a decision rather than
+        a rebuild. Refusing that base with a corruption error every session teaches its owner to
+        ignore the one message that would matter if the file really were damaged.
+        """
+        write(self.base, ".engine-manifest.yml",
+              "version: 1.0.0\n\nengine: []\n\ntemplate: []\n\nexclude:\n  - mine/\n")
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "no kit paths adopted")
+        done = run_update(self.base)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("shares no paths with the kit", done.stdout)
+        self.assertNotIn("corrupt", done.stdout + done.stderr)
+
     def test_a_base_whose_manifest_is_unreadable_refuses_rather_than_doing_nothing(self):
         done = run_update(self.base)
         self.assertEqual(done.returncode, 2)
-        self.assertIn("no kit paths", done.stderr)
+        self.assertIn("no engine: section", done.stderr)
         self.assertEqual((self.base / "rules/canon.md").read_text(), "old canon\n")
 
     def test_self_heal_restores_the_machinery_and_completes_the_update(self):

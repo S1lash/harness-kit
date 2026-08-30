@@ -36,6 +36,11 @@ The platform layer: the cross-platform rule stops depending on somebody remember
 - A static check that every variable `install.ps1` reads is one it set. bash stops on the spot with
   `set -u`; PowerShell substitutes `$null` and carries on, so an over-wide edit surfaces several
   steps later on somebody else's Windows machine.
+- A base that declares `engine: []` is no longer treated as corrupt. An empty list and a lost
+  `engine:` key read identically and mean opposite things: the first is a base whose own canon has
+  been developed past the kit's, keeping the machinery so that adopting a path later is a decision
+  rather than a rebuild. Refusing it every session teaches its owner to ignore the one message
+  that would matter if the file really were damaged.
 - The updater finds its kit by the ADDRESS the manifest declares, not by the remote's name. That
   name lives in each base's git config, which no manifest section reaches and no clone carries, so
   a name used as the contract could never be corrected once bases existed — renaming the kit would

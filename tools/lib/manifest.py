@@ -67,6 +67,18 @@ def parse_section(section: str, text: str) -> list[str]:
     return entries
 
 
+def declares_section(section: str, root: Path | None = None) -> bool:
+    """Whether the manifest names this section at all.
+
+    `read_section` cannot tell `engine: []` from a manifest that lost the key: both read as empty,
+    and the two mean opposite things. An empty list is a base that deliberately shares no paths
+    with the kit — its own harness, updated by hand — while a missing key is a corrupt file whose
+    update would report success having done nothing.
+    """
+    pattern = re.compile(r"^%s\s*:" % re.escape(section), re.M)
+    return bool(pattern.search(manifest_path(root).read_text(encoding="utf-8")))
+
+
 def read_version(root: Path | None = None) -> str:
     """The kit version the manifest declares, or an empty string."""
     match = _VERSION.search(manifest_path(root).read_text(encoding="utf-8"))

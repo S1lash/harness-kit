@@ -306,7 +306,17 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
 
     engine_paths = [p.rstrip("/") for p in manifest_lib.read_section("engine", root)]
     if not engine_paths:
-        return fail("the manifest lists no kit paths — nothing could be updated safely.")
+        if manifest_lib.declares_section("engine", root):
+            # Declared empty: a base that shares no paths with the kit. Not a fault — its own
+            # canon is its own, and adopting a kit path is a decision made one path at a time.
+            print("%s this base shares no paths with the kit, so an update has nothing to "
+                  "replace." % PREFIX)
+            print("YOU MUST: say nothing unless asked. Adopting a kit path is a deliberate "
+                  "choice — read the manifest's header before adding one to engine:.")
+            return 0
+        return fail("the manifest has no engine: section — nothing could be updated safely.",
+                    "Either it is corrupt or it was never written. An update that replaces",
+                    "nothing and reports success is indistinguishable from one that worked.")
 
     dirty = dirty_engine_paths(root, ref, engine_paths)
     if dirty:
