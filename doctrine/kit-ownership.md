@@ -97,6 +97,10 @@ else's machine, where nobody can see it and they cannot diagnose it:
   portability gate cannot see: a `.sh` of impeccably portable bash is still not runnable by
   PowerShell, and reading its contents will never say so;
 - a rule missing from the one canon list, or that list restated in `CLAUDE.md`;
+- a pointer into a named section that the target does not have. `rules/present-not-history.md`
+  forbids citing a heading without opening it, and the same rule requires rewriting a document
+  whole — so headings move, and until now only a person's eyes stood between a moved one and a
+  citation that points confidently at the wrong paragraph;
 - kit paths changed without `VERSION` moving (nobody's daily check notices), or `VERSION` moved
   without `CHANGELOG.md` (the update has nothing to tell them);
 - a shipped file that would behave differently on Windows or on macOS. `python3

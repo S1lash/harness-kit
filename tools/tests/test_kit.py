@@ -850,6 +850,20 @@ retired: []
         self.assertEqual(done.returncode, 1)
         self.assertIn("canon.md", done.stderr)
 
+    def test_a_dead_section_pointer_fails_the_gate_as_an_author_runs_it(self):
+        """Wired, not merely present. A check nobody calls runs never.
+
+        Calling the function directly proves it works; only running the gate the way an author
+        does proves it is reached — and detaching a check is invisible either way otherwise.
+        """
+        write(self.root, "rules/canon.md", "# The Rule\n\n## A Real Section\n\nbody\n")
+        write(self.root, "AGENTS.md",
+              'canon:\n@rules/canon.md\n\nSee `rules/canon.md` -> "A Section That Moved".\n')
+        git(self.root, "add", "-A")
+        done = self.gate()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("cites a section", done.stderr)
+
     def test_the_kits_own_notes_in_the_persons_space_fail_the_release(self):
         write(self.root, ".engine-manifest.yml",
               self.GATE_MANIFEST.replace("exclude: []", "exclude:\n  - notes/"))
@@ -1125,6 +1139,38 @@ class PortabilityGateTests(unittest.TestCase):
         check_kit.check_retired(KIT_ROOT, ["doctrine/gone.md"], [], [],
                                 ["doctrine/gone.md"], lambda m, w="": failures.append(m))
         self.assertTrue(any("listed on its own" in m for m in failures), failures)
+
+    def test_a_pointer_into_a_renamed_section_fails_the_kit(self):
+        """The one defect `present-not-history` forbids that only eyes could catch.
+
+        A citation from a remembered heading rots the first time a file is rewritten — and
+        rewriting a rule whole is what that same rule requires — after which it points
+        confidently at the wrong paragraph.
+        """
+        fake = Path(self.tmp.name) / "kit"
+        shutil.copytree(KIT_ROOT, fake, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        target = fake / "rules/device-sync.md"
+        target.write_text(
+            target.read_text(encoding="utf-8").replace(
+                "## Two questions decide your behaviour — not the name of the device",
+                "## What decides your behaviour", 1), encoding="utf-8")
+        failures = []
+        check_kit.check_section_references(fake, lambda m, w="": failures.append(m))
+        self.assertTrue(any("cites a section" in m for m in failures), failures)
+
+    def test_a_pointer_at_a_missing_file_fails_the_kit(self):
+        fake = Path(self.tmp.name) / "kit2"
+        shutil.copytree(KIT_ROOT, fake, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        (fake / "ARCHITECTURE.md").write_text(
+            'See `rules/nonexistent.md` -> "Some Heading".\n', encoding="utf-8")
+        failures = []
+        check_kit.check_section_references(fake, lambda m, w="": failures.append(m))
+        self.assertTrue(any("does not exist" in m for m in failures), failures)
+
+    def test_every_pointer_the_kit_ships_resolves_today(self):
+        failures = []
+        check_kit.check_section_references(KIT_ROOT, lambda m, w="": failures.append(m))
+        self.assertEqual(failures, [])
 
     def test_a_path_listed_twice_in_one_section_fails_the_release(self):
         # Silent otherwise: the path count the update reports goes up, the work does not, and an

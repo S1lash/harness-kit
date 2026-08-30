@@ -36,6 +36,14 @@ The platform layer: the cross-platform rule stops depending on somebody remember
 - A static check that every variable `install.ps1` reads is one it set. bash stops on the spot with
   `set -u`; PowerShell substitutes `$null` and carries on, so an over-wide edit surfaces several
   steps later on somebody else's Windows machine.
+- Add `ARCHITECTURE.md`: how the layers connect — canon, ownership, the two engines, the gates —
+  and the six invariants that hold it together. It links to each fact's home rather than restating
+  it; what it adds is the shape none of those files can show from the inside, plus where the seams
+  for extending this are and what each costs.
+- A pointer into a named section is now checked by machine. `present-not-history.md` has always
+  forbidden citing a heading without opening the target, and has always required rewriting a
+  document whole — so headings move, and the citation rots into one that points confidently at the
+  wrong paragraph. It found three of its own author's on the first run.
 - The update engine now reads the release it is applying, not only the base it is applying to: a
   path a release adds to `engine:` lands in the run that ships it, `--dry-run` previews the moves
   and deletions that release declares, and a refused move no longer cancels an unrelated deletion

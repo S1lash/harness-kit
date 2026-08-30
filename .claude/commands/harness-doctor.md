@@ -46,16 +46,21 @@ relevant flow fixes what it surfaces.
    encoding, a native command that a stop-on-error PowerShell turns into a crash. A finding here is
    a FAIL naming the file, line and clause: something in a kit path was edited into a shape that
    works on this machine and nowhere else, and it will be replaced at the next update anyway.
-10. **Nothing personal sits in a kit path.** Spot-check the paths the manifest lists under
+10. **Every pointer lands somewhere.** `python3 tools/check_kit.py` also resolves each
+    reference naming a document and a section inside it, in every kit-owned file. A citation from a
+    remembered heading rots on the first rewrite and then points confidently at the wrong
+    paragraph, which is worse than no pointer (`rules/present-not-history.md`). A break is a FAIL
+    naming both ends.
+11. **Nothing personal sits in a kit path.** Spot-check the paths the manifest lists under
     `engine:` for anything the person or their agent wrote — it survives exactly until the next
     update (`doctrine/kit-ownership.md`). Any find is a FAIL naming the file and its real home.
-11. **Indexes present.** `knowledge/_index.md`, `activities/_index.md`, `tools/_index.md`,
+12. **Indexes present.** `knowledge/_index.md`, `activities/_index.md`, `tools/_index.md`,
     `tools/_kit.md` and `projects/_index.md` exist and parse.
-12. **MCP wrapped.** Every local MCP server (Docker / npx / native) in the agent's MCP config routes
+13. **MCP wrapped.** Every local MCP server (Docker / npx / native) in the agent's MCP config routes
     through `tools/mcp-wrapper.js`. An unwrapped local server is a FAIL
     (`doctrine/tool-vs-instrument.md`). Remote / SSE / URL servers are exempt.
-13. **Profile ready.** `profile.md` exists and has a `Language:` value.
-14. **No drift.** Anything the canon requires but the base lacks (a rule file missing, a dead
+14. **Profile ready.** `profile.md` exists and has a `Language:` value.
+15. **No drift.** Anything the canon requires but the base lacks (a rule file missing, a dead
     pointer, a person's fact sitting in a kit-owned path — `doctrine/kit-ownership.md`) → WARN with
     the specific gap.
 

@@ -146,6 +146,40 @@ def check_canon_listed_once(root, fail):
              "One list, in AGENTS.md. A second copy drifts and nobody notices.")
 
 
+def check_section_references(root, fail):
+    """A pointer into a named section must land on a heading that exists.
+
+    `rules/present-not-history.md` forbids referencing a section without opening the target —
+    a citation from a remembered heading rots the first time a file is rewritten, and then points
+    confidently at the wrong paragraph, which is worse than no pointer at all. Until now only a
+    person's eyes could catch that.
+
+    Scope is what the kit ships: those files land on machines nobody here will ever see, so a rot
+    there is one nobody can diagnose. A pointer inside the person's own writing is the agent's job
+    under the rule, not a machine's under a gate.
+    """
+    pattern = re.compile(r"`?([A-Za-z0-9_./-]+\.md)`?\s*(?:\u2192|->)\s*[\"\u201c]([^\"\u201d]+)[\"\u201d]")
+    for relpath in portability.shipped_paths(root):
+        if not relpath.endswith(".md"):
+            continue
+        source = root / relpath
+        for match in pattern.finditer(source.read_text(encoding="utf-8")):
+            name, heading = match.group(1), match.group(2)
+            target = root / name
+            if not target.exists():
+                target = source.parent / name
+            if not target.exists():
+                fail("%s points at %s, which does not exist" % (relpath, name),
+                     "A pointer to a missing file reads as a place to look and is not one.")
+                continue
+            headings = re.findall(r"^#+\s+(.+?)\s*$",
+                                  target.read_text(encoding="utf-8"), re.M)
+            if heading not in headings:
+                fail("%s cites a section %s does not have: %r" % (relpath, name, heading),
+                     "Open the target and copy the heading. A remembered one rots on the first "
+                     "rewrite and then points confidently at the wrong paragraph.")
+
+
 def check_clause_ids(root, fail):
     """A clause and the mechanism that enforces it must know about each other, both ways.
 
@@ -386,6 +420,7 @@ def main(argv) -> int:
     check_canon_listed_once(root, fail)
     check_migrations(root, engine, fail)
     check_clause_ids(root, fail)
+    check_section_references(root, fail)
     findings = portability.scan(root)
     for finding in findings:
         fail("%s:%s not portable [%s]" % (finding.path, finding.line or "-", finding.rule.clause),

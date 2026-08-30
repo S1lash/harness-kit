@@ -95,6 +95,7 @@ engine:
 
   # The kit describing itself
   - README.md
+  - ARCHITECTURE.md
   - CHANGELOG.md
   - DECISIONS.md
   - KNOWN-LIMITS.md

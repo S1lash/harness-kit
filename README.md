@@ -1,9 +1,9 @@
 # harness-kit
 
 **A better base for working with your AI agent.** Clone it once and it becomes yours —
-the agent runs the structure, you just talk and work. A way of working, refined over years,
-made cloneable and de-anonymized: a canon of hard rules, self-learning, knowledge that
-survives sessions, and a concierge stance — built in from the first minute.
+the agent runs the structure, you just talk and work. It ships with a canon of hard rules,
+self-learning, knowledge that survives sessions, and a concierge stance, all in force from the
+first minute: an operating standard, not a folder template.
 
 **What it is, in plain language → https://share.s1lash.com/harness-kit**
 
@@ -91,6 +91,7 @@ you follow it whether or not the session-start hook ran.
 | `VERSION` | The kit version this base is on. |
 | `DECISIONS.md` | Why the kit is built the way it is — what was chosen, what else was considered. |
 | `KNOWN-LIMITS.md` | What the kit cannot do yet, stated plainly. |
+| `ARCHITECTURE.md` | How the pieces connect, and the invariants that hold it together. |
 | `CHANGELOG.md` | What changed between versions, read aloud to you by `/harness-update`. |
 
 ---
