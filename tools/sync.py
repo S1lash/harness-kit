@@ -14,7 +14,6 @@ Modes
   save "<why>"    Stage everything, record it, sync, and send it out.
 """
 
-import os
 import subprocess
 import sys
 from pathlib import Path

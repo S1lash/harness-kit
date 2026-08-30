@@ -33,7 +33,8 @@ rule cannot be in force for one runtime and absent for another:
 | `rules/*.md` | the source — you edit it |
 | `AGENTS.md` — the canon list | **by hand, in the same change**. The only list. |
 | `CLAUDE.md` | derived — one import of `AGENTS.md`, plus Claude-only notes. Nothing to keep in step. |
-| Global entry points (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, Cursor user rules) | derived — `install.sh` points each at `AGENTS.md`. Adding a rule never requires re-running it. |
+| Global entry points (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`) | derived — the installers point each at `AGENTS.md`. Adding a rule never requires re-running them. |
+| Cursor user rules | derived, but written **by hand once**: Cursor has no scriptable global rules file, so the installers produce a snippet to paste. It points at `AGENTS.md`, so it too survives a rule being added — but a base whose owner never pasted it is canon-free in Cursor, and nothing detects that. |
 
 - **Add, rename, or remove a rule → update the list in `AGENTS.md` in the same unit of work.**
   Re-run `install.sh` only when the wiring itself changed (the base moved, a new runtime).

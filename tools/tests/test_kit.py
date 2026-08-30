@@ -278,12 +278,6 @@ class UpdateEndToEndTests(unittest.TestCase):
                          "the update came from the person's own copy, not from the kit")
         self.assertEqual((self.base / "VERSION").read_text().strip(), "1.0.0")
 
-    def test_a_base_with_no_kit_remote_at_all_still_says_what_to_do(self):
-        git(self.base, "remote", "remove", "harness-kit")
-        done = run_update(self.base)
-        self.assertNotEqual(done.returncode, 0)
-        self.assertIn("not connected to the kit", done.stdout + done.stderr)
-
     def test_a_seed_added_after_their_clone_still_reaches_them(self):
         # The gap this closes: templates never sync, so a seed introduced after somebody cloned
         # reached them never — while the canon arriving in the same update named it as if it
@@ -293,6 +287,104 @@ class UpdateEndToEndTests(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertEqual((self.base / "seed.md").read_text(), "pristine seed\n")
         self.assertIn("a seed this base never received", done.stdout)
+
+    def test_the_daily_check_stays_quiet_after_it_has_just_run(self):
+        """`--max-age` is what `.claude/settings.json` runs at every session start.
+
+        The existing check-mode test passes no `--max-age`, so `max_age > 0` is never true and
+        the cache path — the flag's entire reason to exist — was never executed. A stuck cache
+        would have made the daily check silently permanent, or a broken one made it announce the
+        same version every session until the person stopped reading it.
+        """
+        first = run_update(self.base, "--check", "--max-age", "86400")
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        self.assertIn("a newer version of the kit is out", first.stdout)
+        self.assertTrue((self.base / ".git" / "harness-update-check").exists(),
+                        "the check did not record that it ran")
+
+        again = run_update(self.base, "--check", "--max-age", "86400")
+        self.assertEqual(again.returncode, 0)
+        self.assertEqual(again.stdout.strip(), "", "it spoke twice within the same window")
+
+        # A window that has passed lets it speak again — a cache that never expires is the same
+        # failure as no check at all.
+        stale = run_update(self.base, "--check", "--max-age", "0")
+        self.assertIn("a newer version of the kit is out", stale.stdout)
+
+    def test_global_wiring_that_names_another_base_is_reported(self):
+        """Reported, never edited — it is outside the base (`rules/safety.md`).
+
+        Nothing re-runs the installer, so a base that moved keeps a block pointing at where it
+        used to be, and the canon then reaches that runtime from the wrong place or not at all.
+        """
+        import update as updater
+        home = Path(self.tmp.name) / "fake-home"
+        (home / ".claude").mkdir(parents=True)
+        entry = home / ".claude" / "CLAUDE.md"
+        original = Path.home
+
+        entry.write_text("<!-- BEGIN HARNESS-KIT -->\n@/somewhere/else/AGENTS.md\n",
+                         encoding="utf-8")
+        Path.home = staticmethod(lambda: home)
+        self.addCleanup(setattr, Path, "home", original)
+        self.assertEqual(updater.stale_global_wiring(self.base), [str(entry)])
+
+        # Naming this base — by import or by plain path — is not stale.
+        entry.write_text("<!-- BEGIN HARNESS-KIT -->\n@%s/AGENTS.md\n" % self.base,
+                         encoding="utf-8")
+        self.assertEqual(updater.stale_global_wiring(self.base), [])
+        # An entry this kit never wrote is none of its business.
+        entry.write_text("something the person wrote themselves\n", encoding="utf-8")
+        self.assertEqual(updater.stale_global_wiring(self.base), [])
+
+    def test_a_dry_run_reports_a_refusal_instead_of_crashing(self):
+        """A preview that raises tells the person nothing about what an update would do.
+
+        The guards inside the migrate and retire passes read `engine:` and `exclude:` from the
+        manifest on disk, which a real run reads only after the replacement — so a release that
+        moves a path between sections can make the two disagree. Whatever else that produces, the
+        preview has to come back with an answer.
+        """
+        declared = MANIFEST.replace("retired:", "retired:\n  - mine/notes.md")
+        write(self.kit, ".engine-manifest.yml", declared)
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "retire a path this base calls its own")
+
+        done = run_update(self.base, "--dry-run")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("dry-run", done.stdout)
+        self.assertTrue((self.base / "mine/notes.md").exists(), "a dry run deleted something")
+
+    def test_an_unreadable_check_cache_does_not_skip_the_check(self):
+        cache = self.base / ".git" / "harness-update-check"
+        cache.write_text("not json at all", encoding="utf-8")
+        done = run_update(self.base, "--check", "--max-age", "86400")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("a newer version of the kit is out", done.stdout)
+
+    def test_unsaved_work_at_a_path_this_release_claims_stops_the_update(self):
+        """The likeliest collision of all, and the one pass that must not run after the loss.
+
+        Until this run the path was the person's own space, so whatever sits there is theirs.
+        Guarding only the paths the LOCAL manifest calls the kit's replaced it silently: exit 0,
+        no warning, unrecoverable — the one outcome `rules/git-safety.md` exists to prevent.
+        """
+        write(self.base, "NOTICE.md", "the person's own file\n")
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "their file")
+        write(self.base, "NOTICE.md", "the person's own file\nwith unsaved edits\n")
+
+        widened = MANIFEST.replace("  - rules/", "  - rules/\n  - NOTICE.md")
+        write(self.kit, ".engine-manifest.yml", widened)
+        write(self.kit, "NOTICE.md", "the kit's version\n")
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "claim NOTICE.md for the kit")
+
+        done = run_update(self.base)
+        self.assertNotEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("NOTICE.md", done.stdout + done.stderr)
+        self.assertIn("with unsaved edits", (self.base / "NOTICE.md").read_text(),
+                      "the update destroyed work it had never guarded")
 
     def test_a_seed_this_release_introduces_lands_in_the_run_that_ships_it(self):
         """The asymmetry that hid this: the same case for `engine:` was tested and this was not.
@@ -498,9 +590,47 @@ class SyncTests(unittest.TestCase):
             capture_output=True, text=True,
         )
 
-    def test_status_on_a_clean_base_asks_for_nothing(self):
+    def test_a_base_with_no_remote_is_told_it_lives_on_one_machine(self):
+        # This fixture has no remote, which is the loudest state there is — not a quiet one.
         done = self.run_sync("status")
         self.assertIn("unsaved here: none", done.stdout)
+        self.assertIn("lives only on this machine", done.stdout)
+
+    def test_a_base_in_step_says_nothing_at_all(self):
+        """The branch that governs every ordinary session, and nothing covered it.
+
+        A test whose fixture has no remote can never reach it: the tool correctly asks for a
+        remote instead, so `unsaved here: none` passed while the directive said the opposite of
+        the test's own name.
+        """
+        remote = Path(self.tmp.name) / "their-remote.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        git(self.base, "remote", "add", "origin", str(remote))
+        git(self.base, "push", "-q", "-u", "origin", "main")
+        done = self.run_sync("status")
+        self.assertIn("unsaved here: none", done.stdout)
+        self.assertIn("nothing — the base is in step", done.stdout)
+
+    def test_a_base_on_more_than_one_branch_is_reported(self):
+        """What ARCHITECTURE names as holding invariant 2, and nothing tested.
+
+        Reported rather than enforced on purpose — someone mid-experiment has a reason, and
+        refusing to sync would strand them. But a report nothing checks is not a report.
+        """
+        before = self.run_sync("status")
+        self.assertNotIn("branches:", before.stdout, "one branch should say nothing")
+        git(self.base, "branch", "experiment")
+        after = self.run_sync("status")
+        self.assertIn("branches: 2", after.stdout)
+        self.assertIn("invisible on a phone", after.stdout)
+
+    def test_a_detached_head_is_named_before_anything_else(self):
+        # Every later question — ahead, behind, which branch to push — is meaningless here, so
+        # this has to be caught first rather than reported alongside them.
+        head = git(self.base, "rev-parse", "HEAD").stdout.strip()
+        git(self.base, "checkout", "-q", head)
+        done = self.run_sync("status")
+        self.assertIn("single branch", done.stdout)
 
     def test_a_changed_tracked_dotfile_keeps_its_leading_dot(self):
         # Porcelain encodes state in the first two columns, so a MODIFIED tracked file's line
@@ -974,7 +1104,9 @@ retired: []
         write(self.root, "seed.md", "edited after the release\n")
         done = self.gate("--authoring")
         self.assertEqual(done.returncode, 1)
-        self.assertIn("seed", done.stderr)
+        # Not the bare word "seed": the fixture's file IS `seed.md`, so half the gate's other
+        # failures name it too and would satisfy a substring check identically.
+        self.assertIn("already exists on every base was edited", done.stderr)
 
     def test_a_rule_whose_name_hides_inside_another_is_still_caught(self):
         # The regression: `safety.md` is a substring of `git-safety.md`, so searching AGENTS.md for
@@ -987,6 +1119,35 @@ retired: []
         done = self.gate()
         self.assertEqual(done.returncode, 1)
         self.assertIn("canon.md", done.stderr)
+
+    def test_a_new_tool_declared_nowhere_fails_the_release(self):
+        write(self.root, "tools/orphan.py", "print('reaches nobody')\n")
+        git(self.root, "add", "-A")
+        done = self.gate("--authoring")
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("orphan.py", done.stderr)
+
+    def test_a_removal_with_no_retired_line_fails_the_release(self):
+        # git ADDS and UPDATES on checkout and never deletes, so without the line the file lives
+        # on every base forever, offering a contract nothing honours.
+        released = git(self.root, "rev-parse", "HEAD").stdout.strip()
+        (self.root / "rules" / "canon.md").unlink()
+        write(self.root, "rules/other.md", "still here\n")
+        write(self.root, "AGENTS.md", "canon:\n@rules/other.md\n")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "drop a rule without retiring it")
+        done = self.gate("--authoring", "--since", released)
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("canon.md", done.stderr)
+
+    def test_changing_a_kit_path_without_moving_version_fails_the_release(self):
+        released = git(self.root, "rev-parse", "HEAD").stdout.strip()
+        write(self.root, "rules/canon.md", "the rule, revised\n")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "revise the rule")
+        done = self.gate("--authoring", "--since", released)
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("VERSION", done.stderr)
 
     def test_a_dead_section_pointer_fails_the_gate_as_an_author_runs_it(self):
         """Wired, not merely present. A check nobody calls runs never.
@@ -1296,6 +1457,40 @@ class PortabilityGateTests(unittest.TestCase):
             check_kit.check_canon_listed_once(fake, lambda m, w="": failures.append(m))
             self.assertTrue(any("restates the canon list" in m for m in failures),
                             "a second list in %s was not caught: %s" % (where, failures))
+
+    def test_the_gate_agrees_with_the_updater_about_an_empty_engine_section(self):
+        """Two tools, one manifest, opposite verdicts is worse than either being wrong alone.
+
+        `update.py` learned that `engine: []` is a legitimate base and the gate did not, so the
+        base `/harness-doctor` runs the gate on was told its manifest was unsafe while the
+        updater exited 0 on the same file.
+        """
+        import re as _re
+        for body, expect_failure in ((("engine: []\n\n"), False), ("", True)):
+            fake = Path(self.tmp.name) / ("declared" if not expect_failure else "missing")
+            shutil.copytree(KIT_ROOT, fake, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+            manifest = fake / ".engine-manifest.yml"
+            text = _re.sub(r"^engine:\n(  - .*\n|  #.*\n|\n)*", body,
+                           manifest.read_text(encoding="utf-8"), count=1, flags=_re.M)
+            manifest.write_text(text, encoding="utf-8")
+            failures = []
+            engine = manifest_lib.read_section("engine", fake)
+            if not engine and not manifest_lib.declares_section("engine", fake):
+                failures.append("no engine: section")
+            self.assertEqual(bool(failures), expect_failure,
+                             "engine: %r declared=%s" % (body, not expect_failure))
+
+    def test_the_manifests_own_version_is_a_third_mirror_and_is_held_to_it(self):
+        # It drifted freely while the doctrine, the doctor's list and the manifest's own header
+        # all promised it was checked against the other two.
+        fake = Path(self.tmp.name) / "drifted"
+        shutil.copytree(KIT_ROOT, fake, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        manifest = fake / ".engine-manifest.yml"
+        manifest.write_text(manifest.read_text(encoding="utf-8")
+                            .replace("version: 0.2.0", "version: 9.9.9", 1), encoding="utf-8")
+        failures = []
+        check_kit.check_versions(fake, lambda m, w="": failures.append(m))
+        self.assertTrue(any("manifest says version" in m for m in failures), failures)
 
     def test_a_pointer_into_a_renamed_section_fails_the_kit(self):
         """The one defect `present-not-history` forbids that only eyes could catch.

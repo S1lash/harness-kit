@@ -66,7 +66,7 @@ it. So there is exactly **one hand-maintained list**, and everything else derive
        ├── CLAUDE.md                    one `@AGENTS.md` import + Claude-only notes
        └── ~/.claude/CLAUDE.md          written by install, points at this base
            ~/.codex/AGENTS.md           same
-           Cursor user rules            same
+           Cursor user rules            a snippet install writes out; pasted by hand
 ```
 
 What adding a rule costs, and when the installer has to be re-run at all, is stated once in

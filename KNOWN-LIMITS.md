@@ -29,6 +29,10 @@
   `git checkout harness-kit/main -- tools/update.py tools/lib .engine-manifest.yml`. An agent
   present in the session runs it; the boundary is stated here because nothing in the traceback
   says which side of it you are on.
+- **Cursor is wired by hand, once.** It has no scriptable global rules file, so both installers
+  write a ready-to-paste snippet and print a manual step. The snippet points at `AGENTS.md`, so a
+  rule added later still reaches it — but a base whose owner never pasted it is canon-free in
+  Cursor, and nothing detects that. Claude Code and Codex are wired automatically.
 - **The portability gate reads code, so it can be fooled by code that hides.** It is a static
   scanner, and three shapes are deliberately out of reach rather than accidentally missed: a
   construct split mid-word across a shell continuation (`map\` + newline + `file`), a command name

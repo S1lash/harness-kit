@@ -47,8 +47,10 @@
 #   - Template files ship under their LIVE names, with no `.template` suffix to
 #     strip: the kit's copies are already pristine, because the kit is authored
 #     as the public thing rather than extracted out of somebody's live instance.
-#   - `version:` below is the kit's version and the only place it is authored.
-#     `.claude-plugin/plugin.json` mirrors it and is updated in the same edit.
+#   - `version:` below is one of THREE mirrors of the kit's version, with `VERSION`
+#     and `.claude-plugin/plugin.json`. `VERSION` is what an update reads and
+#     verifies; all three move in the same edit, and the release gate refuses a
+#     release where any of them disagrees.
 
 version: 0.2.0
 

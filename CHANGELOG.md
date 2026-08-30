@@ -41,6 +41,18 @@ The platform layer: the cross-platform rule stops depending on somebody remember
   been developed past the kit's, keeping the machinery so that adopting a path later is a decision
   rather than a rebuild. Refusing it every session teaches its owner to ignore the one message
   that would matter if the file really were damaged.
+- **An update no longer destroys unsaved work at a path the release newly claims.** The dirty
+  guard ran over the paths the LOCAL manifest called the kit's, so a path this release adds to
+  `engine:` was replaced without ever being guarded — exit 0, no warning, unrecoverable. Those are
+  the likeliest collisions of all: until that run the path was the person's own space, so whatever
+  sits there is theirs.
+- `check_kit.py` agrees with the updater about `engine: []`. The updater learned it was legitimate
+  and the gate did not, so the base `/harness-doctor` runs the gate on was told its manifest was
+  unsafe while the updater exited 0 on the same file.
+- The manifest's own `version:` is held to the other two mirrors. It drifted freely while the
+  doctrine, the doctor's check list and the manifest's own header all promised it was checked.
+- Cursor's wiring is described as what it is — a snippet the installers write out and a person
+  pastes once. Two documents called it automatic.
 - The updater finds its kit by the ADDRESS the manifest declares, not by the remote's name. That
   name lives in each base's git config, which no manifest section reaches and no clone carries, so
   a name used as the contract could never be corrected once bases existed — renaming the kit would

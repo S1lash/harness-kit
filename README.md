@@ -24,11 +24,8 @@ first minute: an operating standard, not a folder template.
    ```bash
    git clone <this-repo-url> harness    # name it whatever you like
    ```
-   On Windows, open a terminal first and run it from there — so the window stays open and you
-   can read what it says:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\install.ps1
-   ```
+   On Windows, open a terminal (PowerShell) and run it from there, so the window stays open and
+   you can read what it says.
 2. **Tell your agent: "install this."** It asks a few plain questions — where, your
    language, which agents you use — sets up the one private place your base lives online, and
    wires everything up. Then you just work.

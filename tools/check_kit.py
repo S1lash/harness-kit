@@ -127,6 +127,12 @@ def check_versions(root, fail):
     if plugin != version:
         fail("%s says %r but VERSION says %r" % (PLUGIN_MANIFEST, plugin, version),
              "They are mirrors of one number and move in the same edit.")
+    # Three mirrors, not two. The manifest's own `version:` drifted freely while the doctrine,
+    # the doctor's check list and the manifest header all promised it was held to the other two.
+    declared = manifest_lib.read_version(root)
+    if declared and declared != version:
+        fail("the manifest says version %r but VERSION says %r" % (declared, version),
+             "All three mirrors move in the same edit, or the number means nothing.")
 
 
 def check_canon_listed_once(root, fail):
@@ -414,10 +420,14 @@ def main(argv) -> int:
 
     # A manifest that parses to nothing passes every check below by having nothing to check.
     # That is the exact shape of a corrupted file, and it would ship an update that deletes
-    # nobody's anything and reports success.
-    if not engine:
-        fail("the manifest lists no engine paths",
-             "Either it is corrupt or the kit owns nothing — both mean no update can work.")
+    # nobody's anything and reports success. But `engine: []` declared on purpose is a base
+    # whose own canon has been developed past the kit's, keeping the machinery so that adopting
+    # a path later is a decision rather than a rebuild — `update.py` makes exactly this
+    # distinction, and a gate that calls such a base corrupt every run teaches its owner to
+    # ignore the message that would matter if the file really were damaged.
+    if not engine and not manifest_lib.declares_section("engine", root):
+        fail("the manifest has no engine: section",
+             "Either it is corrupt or it was never written — no update can work either way.")
 
     check_paths_exist(root, engine, template, fail)
     check_no_double_listing(engine, template, fail)
@@ -449,8 +459,11 @@ def main(argv) -> int:
         print("check_kit: %s — %d engine paths, %d templates, %d retired"
               % (scope, len(engine), len(template), len(retired)))
         return 0
-    print("check_kit: %d problem(s) — this kit is not ready to ship\n" % len(failures),
-          file=sys.stderr)
+    # An author is shipping; a person is being told about their own base. The same wording for
+    # both reads to the second as though their base were a release candidate.
+    verdict = ("this kit is not ready to ship" if args.authoring
+               else "this base has something to fix")
+    print("check_kit: %d problem(s) — %s\n" % (len(failures), verdict), file=sys.stderr)
     for message, why in failures:
         print("  x %s" % message, file=sys.stderr)
         if why:

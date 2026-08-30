@@ -129,10 +129,6 @@ def resolve_remote(remote: str, root: Path):
     return (remote, url) if url else (remote, None)
 
 
-def require_remote(remote: str, root: Path):
-    return resolve_remote(remote, root)[1]
-
-
 # ---------------------------------------------------------------------------
 # modes
 # ---------------------------------------------------------------------------
@@ -318,7 +314,17 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
                     "Either it is corrupt or it was never written. An update that replaces",
                     "nothing and reports success is indistinguishable from one that worked.")
 
-    dirty = dirty_engine_paths(root, ref, engine_paths)
+    # Read the manifest being SHIPPED before anything is touched. Everything below — what to
+    # guard, what to seed, what to replace — is decided by what the RELEASE declares, not by what
+    # this base still happens to hold.
+    incoming = incoming_sections(ref, root)
+
+    # A path this release ADDS to engine: has to be guarded BEFORE it is replaced, and it is the
+    # likeliest of all of them to collide: until this run it was the person's own space, so
+    # whatever is sitting there is theirs. Computing it here rather than at the checkout loop is
+    # the whole point — the one pass whose job is preventing loss cannot run after the loss.
+    adopted = [p for p in incoming["engine"] if p not in engine_paths]
+    dirty = dirty_engine_paths(root, ref, engine_paths + adopted)
     if dirty:
         return fail(
             "these kit paths have unsaved local edits and would be overwritten:",
@@ -330,7 +336,6 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
     version_before = read_local_version(root)
     version_upstream = (ref_read_path(ref, VERSION_FILE, root) or "").strip()
 
-    incoming = incoming_sections(ref, root)
 
     if dry_run:
         print("%s dry-run — would replace these from %s:" % (PREFIX, ref))
@@ -344,9 +349,22 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
         for relpath in incoming["template"]:
             if not (root / relpath).exists() and ref_has_path(ref, relpath, root):
                 print("  + add %s (a seed this base never received)" % relpath)
-        for move in migrate_lib.run(root, dry_run=True, entries=incoming["migrations"]):
-            print("  > move %s to %s" % (move.source, move.destination))
-        removed = retire_lib.run(root, dry_run=True, entries=incoming["retired"])
+        # The guards inside these two read `engine:`/`exclude:` from the manifest on disk, which
+        # a real run reads only AFTER the replacement. A release that moves a path between
+        # sections and migrates or retires under it in the same release would therefore preview
+        # against one manifest and apply against another; a refusal is reported as a refusal
+        # rather than crashing the preview.
+        try:
+            for move in migrate_lib.run(root, dry_run=True, entries=incoming["migrations"]):
+                print("  > move %s to %s" % (move.source, move.destination))
+        except migrate_lib.MigrationRefused as refusal:
+            print("  ! a declared move cannot be previewed from this base yet: %s" % refusal)
+        try:
+            removed = retire_lib.run(root, dry_run=True, entries=incoming["retired"])
+        except retire_lib.RetirementRefused as refusal:
+            print("  ! a declared removal names paths this base calls its own: %s"
+                  % ", ".join(refusal.trespassing))
+            removed = []
         for relpath in removed:
             print("  - drop %s (the kit no longer has it)" % relpath)
         print("%s dry-run: %s -> %s. Nothing applied." % (PREFIX, version_before or "?",
@@ -360,7 +378,7 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
     # A path this release ADDS to engine: is not in the list read from the manifest that was on
     # disk when the run began — that manifest is itself one of the paths being replaced. Without
     # this the new file lands one whole update late, and the run that ships it says nothing.
-    newly_declared = [p for p in incoming["engine"] if p not in engine_paths]
+    newly_declared = adopted
     for relpath in engine_paths + newly_declared:
         if not ref_has_path(ref, relpath, root):
             absent += 1
@@ -376,7 +394,8 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool) -> int:
     # engine once reported success for weeks while applying nothing at all.
     if resolved == 0:
         return fail(
-            "not one of the %d kit paths was found in %s." % (len(engine_paths), ref),
+            "not one of the %d kit paths was found in %s."
+            % (len(engine_paths) + len(newly_declared), ref),
             "That is never the shape of an up-to-date base — the kit would have to have",
             "deleted itself. Something mangled the paths before git saw them.",
             "Recover with: python3 tools/update.py --self-heal",
