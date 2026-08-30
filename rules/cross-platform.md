@@ -7,8 +7,10 @@ later, on somebody else's setup, as "it doesn't work for me". Any project, any s
 
 - **Tier 1 — what the kit ships.** Every path `.engine-manifest.yml` lists under `engine:` or
   `template:` lands on machines you will never see: Windows under Git Bash or PowerShell, macOS
-  with its system **bash 3.2**, Linux. Tier 1 is not a judgement call. The clauses carrying an id
-  below are machine-enforced — `python3 tools/check_portability.py` fails a release on any of them.
+  with its system **bash 3.2**, Linux. Tier 1 is not a judgement call. A `template:` entry sitting
+  inside a directory the manifest also lists under `exclude:` is still tier 1 — the update seeds it
+  onto every base, and where the seed lands says nothing about who wrote it. The clauses carrying an
+  id below are machine-enforced — `python3 tools/check_portability.py` fails a release on any.
 - **Tier 2 — what the person writes for themselves.** Their own tools, their own projects: it has
   to work where they run it, and that is the whole requirement. **The moment such a thing is handed
   to anyone else** — shipped in the kit, published, sent, deployed — **it becomes tier 1 and pays

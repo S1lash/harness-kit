@@ -923,19 +923,87 @@ class PortabilityGateTests(unittest.TestCase):
         self.assertIn("CP-2", self.clauses("a.sh", "mapfile -t x < f  # portability-ok:\n"))
 
     # -- scope ----------------------------------------------------------------
-    def test_the_rule_table_and_the_fixtures_are_not_scanned(self):
-        body = "mapfile -t x < f\n"
-        self.assertEqual(portability.scan_file(KIT_ROOT, "tools/lib/portability.py"), [])
-        self.assertEqual(self.clauses("tools/tests/fixture.sh", body), [])
+    def test_the_fixtures_are_not_scanned(self):
+        self.assertEqual(self.clauses("tools/tests/fixture.sh", "mapfile -t x < f\n"), [])
 
-    def test_tier_one_is_exactly_what_the_manifest_ships(self):
+    def test_tier_one_is_everything_the_manifest_ships(self):
         shipped = set(portability.shipped_paths(KIT_ROOT))
         self.assertIn("rules/cross-platform.md", shipped)
         self.assertIn("install.ps1", shipped)
-        self.assertNotIn("knowledge/decisions.md", shipped - {"knowledge/decisions.md"} | set())
+        # Every template is tier 1, INCLUDING one seeded inside a directory listed under
+        # exclude:. update.py seeds them all regardless of exclude, so calling them the person's
+        # space here would let one manifest mean two different things and ship them unchecked.
+        for entry in manifest_lib.read_section("template", KIT_ROOT):
+            self.assertIn(entry, shipped, "a seeded template is not tier 1: %s" % entry)
+        # The person's own space, minus those seeds, stays out.
+        seeds = set(manifest_lib.read_section("template", KIT_ROOT))
         for entry in manifest_lib.read_section("exclude", KIT_ROOT):
-            self.assertFalse([p for p in shipped if manifest_lib.covers([entry], p)],
-                             "the person's space is tier 2: %s" % entry)
+            stray = [p for p in shipped if manifest_lib.covers([entry], p) and p not in seeds]
+            self.assertEqual(stray, [], "the person's space is tier 2: %s" % entry)
+
+    def test_a_build_artifact_inside_a_shipped_directory_is_not_shipped(self):
+        # shipped_paths globs the filesystem, so a __pycache__ or a stray .venv would otherwise
+        # be counted as kit content and could fail somebody's gate on a file no update carries.
+        self.assertEqual([p for p in portability.shipped_paths(KIT_ROOT)
+                          if "__pycache__" in p or ".venv" in p], [])
+
+    def test_whole_file_rules_run_on_every_shipped_path_whatever_its_suffix(self):
+        # .gitattributes is the file that ENFORCES LF and had no LF check of its own.
+        self.assertIn("CP-3", self.clauses(".gitattributes", b"*.sh text\r\n", binary=True))
+        self.assertIn("CP-3", self.clauses("tools/x.js", b"const a = 1;\r\n", binary=True))
+
+    def test_shipped_javascript_is_checked_for_a_path_from_one_machine(self):
+        self.assertIn("CP-1", self.clauses("tools/x.mjs", 'const base = "/home/someone/base";\n'))
+
+    # -- what a regex could not see ------------------------------------------
+    def test_a_call_that_nests_or_spans_lines_is_still_seen(self):
+        for body in ('f = open(os.path.join(root, name))\n',
+                     'f = open(\n    path,\n    "w",\n)\n',
+                     't = p.write_text(json.dumps(d))\n'):
+            self.assertIn("CP-5", self.clauses("a.py", body), body)
+
+    def test_a_clustered_or_long_form_flag_is_still_the_same_flag(self):
+        for line in ("sed -E -i '' f", "sed -ie s/a/b/ f", "grep -Pq foo f", "readlink -fn x",
+                     "declare -Ax m", "sed --in-place s/a/b/ f", "grep --perl-regexp x f",
+                     "stat --format=%s f"):
+            self.assertIn("CP-2", self.clauses("a.sh", line + "\n"), line)
+
+    def test_a_native_call_reached_through_a_variable_or_splat_is_still_native(self):
+        for line in ("git $Arguments", "git @gitArgs", "git.exe status"):
+            self.assertIn("CP-6", self.clauses("a.ps1", line + "\n"), line)
+
+    def test_a_helper_named_in_a_message_does_not_disarm_the_line_beside_it(self):
+        body = 'Write-Host "see Get-Command docs"; git push\n'
+        self.assertIn("CP-6", self.clauses("a.ps1", body))
+
+    def test_a_powershell_message_naming_a_command_is_not_a_call(self):
+        self.assertEqual(self.clauses("a.ps1", 'Write-Host "then run git push yourself"\n'), [])
+
+    def test_a_hardcoded_windows_path_is_caught_and_a_regex_escape_is_not(self):
+        self.assertIn("CP-1", self.clauses("a.ps1", '$d = "C:\\Users\\someone\\base"\n'))
+        self.assertEqual(self.clauses("a.ps1", "$rx = [regex]'(?m)^- Language:.*$'\n"), [])
+        self.assertEqual(self.clauses("a.sh", "printf 'imports it:\\n'\n"), [])
+
+    def test_a_continued_line_is_read_as_one_command(self):
+        self.assertEqual(self.clauses("a.ps1", '$t = Get-Content `\n  -Raw -Encoding UTF8 $p\n'), [])
+
+    def test_a_one_line_docstring_and_a_help_constant_are_prose(self):
+        for body in ('"""Why open(path) is wrong."""\nx = 1\n',
+                     'HELP = """usage:\n  tool --root /home/someone/base\n  open(path)\n"""\n',
+                     'r"""Matches /home/someone style paths."""\nx = 1\n'):
+            self.assertEqual(self.clauses("a.py", body), [], body)
+
+    def test_the_escape_has_to_be_a_comment(self):
+        # An escape a string literal can trigger is the opposite of loud: it never reads as an
+        # exemption to anyone reviewing the line.
+        body = 'echo "portability-ok: data" ; mapfile -t x < f\n'
+        self.assertIn("CP-2", self.clauses("a.sh", body))
+
+    def test_a_wider_fence_and_a_nested_one_are_documents_not_code(self):
+        wrapped = "````markdown\n```bash\nmapfile -t x < f\n```\n````\n"
+        self.assertEqual(self.clauses("a.md", wrapped), [])
+        quoted = "```text\n```bash\nmapfile -t x < f\n```\n"
+        self.assertEqual(self.clauses("a.md", quoted), [])
 
     def test_the_kit_it_ships_today_is_clean(self):
         self.assertEqual([str(f) for f in portability.scan(KIT_ROOT)], [])
