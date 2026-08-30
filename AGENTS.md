@@ -33,7 +33,8 @@ somewhere else: `rules/` is the kit's own space (`doctrine/kit-ownership.md`).
 
 Deeper how-to, read on demand and never by default: `doctrine/` — authoring for agents, knowledge
 discipline, skill creation, the deep-knowledge pattern, tool-vs-instrument, the harness-edit
-checklist, what the kit owns versus what the person owns, and the contract every project carries.
+checklist, what the kit owns versus what the person owns, the contract every project carries, and
+what to do when a second base appears on the same machine.
 
 ## Harness home
 

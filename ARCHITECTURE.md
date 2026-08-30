@@ -266,4 +266,5 @@ For anyone extending this, these are the places designed to be extended, and wha
 
 What is *not* a seam: the split between kit and person is drawn by path and by path only. A
 mechanism that needs a different line — ownership by source, several kits sharing one base — is a
-change to this architecture, not a configuration of it.
+change to this architecture, not a configuration of it. What to do meanwhile, when a second base
+turns up on the same machine, is `doctrine/many-bases.md`: route between them, never absorb.

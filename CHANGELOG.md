@@ -52,6 +52,11 @@ The platform layer: the cross-platform rule stops depending on somebody remember
   nothing checked it; the force/rebase scan covered only `sync.py`, so a merge added to the
   updater would have shipped green.
 - A second copy of the canon list is caught wherever it sits, not only in `CLAUDE.md`.
+- Add `doctrine/many-bases.md`: two bases on one machine share one global entry point per
+  runtime, and the tempting move is to copy "just one rule" across. Every such copy is a second
+  home for a fact the other base owns, and it diverges silently because nothing compares them and
+  neither base knows the other exists. Route, never absorb — with the shape of a pointer, and an
+  honest statement of what ownership-by-path cannot express.
 - Add `ARCHITECTURE.md`: how the layers connect — canon, ownership, the two engines, the gates —
   and the six invariants that hold it together. It links to each fact's home rather than restating
   it; what it adds is the shape none of those files can show from the inside, plus where the seams
