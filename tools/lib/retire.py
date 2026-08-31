@@ -90,11 +90,14 @@ def run(root: Path, dry_run: bool = False, entries: list[str] | None = None,
 def _prune_empty_parents(root: Path, directory: Path) -> None:
     """Remove directories a deletion emptied, never climbing past the base.
 
-    The stop condition is containment, not inequality: `directory != root` never becomes true for
-    a path outside the base, so a single escaping entry used to walk UP the filesystem deleting
-    every directory it emptied.
+    An emptied directory left behind still reads as a place things live — but the stop condition
+    has to be containment, not inequality: `directory != root` never becomes true for a path that
+    started outside the base, so one escaping entry walked UP the filesystem removing every
+    directory it emptied.
     """
-    """An emptied directory left behind still reads as a place things live."""
-    while directory != root and directory.is_dir() and not any(directory.iterdir()):
+    base = root.resolve()
+    while directory.resolve() != base and directory.is_dir() and not any(directory.iterdir()):
+        if base not in directory.resolve().parents:
+            return
         directory.rmdir()
         directory = directory.parent

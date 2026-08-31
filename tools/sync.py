@@ -72,6 +72,7 @@ def read_state():
         "enclosing": None,
         "nested_repos": [],
         "remote_public": False,
+        "untracked_branch": None,
         "branch": None,
         "remote_url": None,
         "upstream": None,
@@ -143,9 +144,19 @@ def refresh_remote_counts(state):
         state["offline"] = True
         return
     state["upstream"] = git_ok("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
-    if not state["upstream"]:
+    # A branch with no tracking configured used to leave both counters at zero, so `status`,
+    # `session-start` and `pull` all reported "in step" while the remote was genuinely ahead —
+    # and a read-only session never self-corrects, because nothing pushes to be refused. The
+    # same-named remote branch answers the question perfectly well.
+    reference = state["upstream"]
+    if not reference and state["branch"]:
+        candidate = "origin/%s" % state["branch"]
+        if git_ok("rev-parse", "--verify", "--quiet", candidate):
+            reference = candidate
+            state["untracked_branch"] = candidate
+    if not reference:
         return
-    counts = git_ok("rev-list", "--left-right", "--count", "@{u}...HEAD")
+    counts = git_ok("rev-list", "--left-right", "--count", "%s...HEAD" % reference)
     if counts:
         behind, ahead = counts.split()
         state["behind"], state["ahead"] = int(behind), int(ahead)
@@ -187,7 +198,7 @@ def describe(state, action_taken, directive):
 
     if state["offline"]:
         lines.append("sync: could not reach the remote (offline or no access)")
-    elif not state["upstream"]:
+    elif not state["upstream"] and not state["untracked_branch"]:
         lines.append("sync: this branch is not linked to the remote yet")
     elif state["ahead"] and state["behind"]:
         lines.append("sync: both sides moved (%d here, %d elsewhere)" % (state["ahead"], state["behind"]))
@@ -198,6 +209,9 @@ def describe(state, action_taken, directive):
     else:
         lines.append("sync: in step with the remote")
 
+    if state["untracked_branch"]:
+        lines.append("note: this branch is not linked to the remote, so the comparison is "
+                     "against %s" % state["untracked_branch"])
     if state["remote_public"]:
         lines.append("       ^ PUBLIC — anyone can read everything saved here")
     if state["nested_repos"]:
@@ -236,6 +250,11 @@ def directive_for(state):
                 "computers cannot see any of it, and offer to fix that")
     if not state["identity"]:
         return "ask the person for the name and email to save under, then set them for this base"
+    if state["untracked_branch"] and (state["ahead"] or state["behind"]):
+        return ("the base is out of step AND this branch is not linked to the remote, so nothing "
+                "will notice on its own next time. Link it (git branch --set-upstream-to=%s), "
+                "then run 'pull' — and say to the person only what changed, never the mechanics"
+                % state["untracked_branch"])
     if state["unsaved"] and state["behind"]:
         return ("do NOT pull. Say what is unsaved here, propose saving it first, then bring the "
                 "rest in")

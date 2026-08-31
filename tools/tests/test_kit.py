@@ -154,6 +154,47 @@ class SilentDivergenceTests(unittest.TestCase):
         done = self.run_sync("status")
         self.assertNotIn("projects kept separately", done.stdout)
 
+    def test_a_branch_with_no_tracking_still_notices_the_remote_moved(self):
+        """The base reported "in step" while the remote was genuinely ahead.
+
+        `refresh_remote_counts` returned early when no upstream was configured, leaving both
+        counters at zero — so `status`, `session-start` and `pull` all said the same wrong thing,
+        and a read-only session never self-corrects because nothing pushes to be refused.
+        """
+        remote = Path(self.tmp.name) / "shared.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        # A bare repo defaults HEAD to `master`, so a clone of it lands there and the second
+        # surface's commit never reaches `main` at all — the divergence under test would not
+        # happen, and the test would pass for the wrong reason.
+        subprocess.run(["git", "-C", str(remote), "symbolic-ref", "HEAD", "refs/heads/main"],
+                       check=True)
+        write(self.base, "f.md", "v1\n")
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "one")
+        git(self.base, "remote", "add", "origin", str(remote))
+        git(self.base, "push", "-q", "-u", "origin", "main")
+
+        other = Path(self.tmp.name) / "other"
+        subprocess.run(["git", "clone", "-q", str(remote), str(other)], check=True)
+        self.assertEqual(
+            subprocess.run(["git", "-C", str(other), "rev-parse", "--abbrev-ref", "HEAD"],
+                           capture_output=True, text=True).stdout.strip(), "main",
+            "the second surface is not on the branch under test")
+        write(other, "f.md", "v2\n")
+        git(other, "add", "-A")
+        git(other, "commit", "-qm", "two")
+        git(other, "push", "-q")
+
+        # The tracking link is what a fresh or hand-made checkout most often lacks.
+        git(self.base, "branch", "--unset-upstream")
+        done = self.run_sync("status")
+        self.assertNotIn("in step with the remote", done.stdout,
+                         "it reported in step while the remote was ahead")
+        self.assertIn("origin/main", done.stdout)
+        self.assertIn("1 change(s) elsewhere are not here yet", done.stdout)
+        self.assertIn("not linked to the remote", done.stdout,
+                      "the reason the comparison is indirect has to be said")
+
     def test_a_public_remote_stops_the_save(self):
         """"Private" was asserted once at creation and never checked again.
 
@@ -443,6 +484,26 @@ class ContainmentTests(unittest.TestCase):
         with self.assertRaises(retire_lib.RetirementRefused):
             retire_lib.run(self.root, entries=["link/victim.txt"])
         self.assertTrue((outside / "victim.txt").exists())
+
+    def test_pruning_empty_parents_never_climbs_out_of_the_base(self):
+        """The second rubber band, tested directly because the first one now stops the caller.
+
+        Its stop condition used to be `directory != root`, which is never true for a path that
+        started above the base — so one escaping entry walked UP the filesystem removing every
+        directory it emptied. Four went in the demonstration.
+        """
+        outside = Path(self.tmp.name) / "outside" / "a" / "b"
+        outside.mkdir(parents=True)
+        retire_lib._prune_empty_parents(self.root, outside)
+        self.assertTrue((Path(self.tmp.name) / "outside").exists(),
+                        "pruning climbed out of the base")
+
+        # Inside the base it still does its job: an emptied directory is not left behind.
+        inner = self.root / "knowledge" / "gone"
+        inner.mkdir(parents=True)
+        retire_lib._prune_empty_parents(self.root, inner)
+        self.assertFalse(inner.exists())
+        self.assertTrue(self.root.exists(), "it removed the base itself")
 
     def test_a_move_may_not_reach_outside_the_base_in_either_direction(self):
         # Outbound loses the person's file; INBOUND drags an arbitrary file into a repository the
