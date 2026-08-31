@@ -16,6 +16,24 @@ present; evolution is logged here.
 - The tests standing up a remote could each choose whether to put its HEAD on `main`; two did and
   three did not, and a clone of the wrong kind lands on `master`, where the divergence a test is
   about never happens and it passes for the wrong reason. One helper now does it every time.
+- The `--force` ban named three files, and git had since moved behind `tools/lib/gitrun.py`,
+  which was not one of them: a force-push added to the helper every tool funnels through shipped
+  green through the whole suite and both gates. It is asked of the manifest now — every python
+  file the kit ships out of `tools/` — so the invariant follows the code instead of a list. The
+  never-merge invariant covers the same set, `sync.py` excepted, because merging is its job.
+- The shipped test suite failed on every base that installs the kit. One assertion asked whether
+  the AMBIENT `origin` was the kit's, and on a person's base it is their own private repository
+  by design — so `/harness-doctor` told each of them their tooling was broken and their saves
+  might be lost, on the one command whose entire value is being believed. It asks a fixture now.
+- The gate's own wiring is gated. Any of six checks — including the whole portability scan, which
+  `ARCHITECTURE.md` promises runs on any base — could be dropped from the orchestration with
+  every test still passing, because each check was only ever tested through a direct call.
+- A manifest entry reaching outside the base is refused correctly and now says so: it reached the
+  person as a Python traceback, in the one state where the kit is actively declining to touch
+  their disk. The recovery text for both broken-contract states lives in one place.
+- The canon check rejected `- @rules/x.md`. A bulleted import is live, and `AGENTS.md` asks the
+  agent to repair that list itself without saying the format is exact — so the tightening above
+  turned into a false alarm on the check whose whole value is being believed.
 
 ## 2026-08-30
 

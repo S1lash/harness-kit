@@ -76,3 +76,11 @@
   will not tokenize is a bigger problem than this gate, and it degrades to the weaker analysis
   rather than silently scanning nothing — but its docstrings are then matched as code, which shows
   up as false findings and not as silence. That is the intended direction to fail in.
+- **Nothing runs the gates on its own.** There is no CI: the tests, `check_kit.py` and
+  `check_portability.py` run when a person or an agent runs them, and the discipline that they get
+  run before a release lives in `doctrine/kit-ownership.md` and in `/harness-doctor`. Every gate
+  here is therefore only as good as the habit of invoking it, and a release pushed without one is
+  refused by nothing.
+- **`tools/mcp-wrapper.js` has no behavioural test.** It is the one shipped executable nothing
+  exercises — the suite is python, and the wrapper only matters against a real MCP server holding
+  a real child process. It is read by the portability scanner and by nothing else.

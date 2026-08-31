@@ -174,11 +174,16 @@ def check_versions(root, fail):
 def check_canon_listed_once(root, fail):
     rules = sorted(p.name for p in (root / "rules").glob("*.md"))
     contract = (root / "AGENTS.md").read_text(encoding="utf-8")
-    # The whole line, never a substring of it. `safety.md` sits inside `git-safety.md`, so a
+    # The whole entry, never a substring of it. `safety.md` sits inside `git-safety.md`, so a
     # bare filename search reports a rule as listed when nothing lists it; and a malformed
-    # entry — a typo, a suffix, a stray word — contains the correct one and passes on it. The
+    # entry — a typo, a suffix, a stray word — CONTAINS the correct one and passes on it. The
     # rule then reaches no runtime while the gate calls the kit ready to ship.
-    listed = {line.strip() for line in contract.splitlines()}
+    #
+    # A leading bullet or indent is not malformation: `- @rules/x.md` is a live import, and
+    # `AGENTS.md` tells the agent to repair this list itself without saying the format is
+    # exact. Rejecting the shape the contract invites is a false alarm on the one check whose
+    # whole value is being believed.
+    listed = {line.strip().lstrip("-*+ \t") for line in contract.splitlines()}
     for name in rules:
         if ("@rules/%s" % name) not in listed:
             fail("AGENTS.md", "does not list the rule rules/%s" % name,

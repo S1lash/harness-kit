@@ -34,6 +34,30 @@ class ManifestMissing(FileNotFoundError):
     """
 
 
+def explain_refusal(problem) -> str:
+    """What to DO about a contract that cannot be read, for the person holding the broken base.
+
+    The two ways it fails are opposite and the remedies differ, but neither is a traceback: the
+    base that most needs a recovery command is exactly the one whose machinery just refused.
+    Both tools that read the manifest print this, so the wording exists once.
+    """
+    if isinstance(problem, ManifestMissing):
+        return ("the kit/person contract is missing: %s\n"
+                "  Nothing can tell a kit path from a person's without it, so no tool\n"
+                "  here will guess. Restore it with:\n"
+                "    git checkout harness-kit/main -- %s\n"
+                "  or, if the machinery is damaged too:\n"
+                "    python3 tools/update.py --self-heal\n" % (problem, MANIFEST_NAME))
+    return ("the kit/person contract cannot be trusted: %s\n"
+            "  An entry that reaches outside this base would be deleted, moved or\n"
+            "  overwritten on the next update, so nothing here will act on the file\n"
+            "  at all. Open %s and remove the entry named above, or restore it:\n"
+            "    git checkout harness-kit/main -- %s\n"
+            "  or, if the machinery is damaged too:\n"
+            "    python3 tools/update.py --self-heal\n"
+            % (problem, MANIFEST_NAME, MANIFEST_NAME))
+
+
 class UnsafeEntry(ValueError):
     """A manifest entry that would reach outside the base.
 

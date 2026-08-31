@@ -229,11 +229,14 @@ guarded only by the current author's discipline should be read as exactly that:
    committed into a kit path is overwritten silently; only an UNSAVED one stops the update.
 4. **An update replaces and never merges.** The person cannot adjudicate a conflict in a file
    they did not write.
-   *Gated* — the tests refuse a merge, rebase, reset or stash verb anywhere in the updater.
+   *Gated* — the tests refuse a merge, rebase, reset or stash verb in every python file the kit
+   ships out of `tools/`, `sync.py` excepted: putting two sides together is precisely its job,
+   and nothing on the update path imports it.
 5. **`--force` and its quiet equivalents need the person, in the moment.** They destroy exactly
    what git normally refuses to (`rules/git-safety.md`).
-   *Gated for the python tools* — the installers are not scanned, because PowerShell's unrelated
-   `-Force` on `New-Item` would make the scan useless.
+   *Gated for the python tools* — every python file the manifest ships out of `tools/`, asked of
+   the manifest rather than named, so the scan follows the code when it moves. The installers are
+   not scanned, because PowerShell's unrelated `-Force` on `New-Item` would make it useless.
 6. **The structure is the agent's burden, never the person's.** A harness whose owner has to
    curate it becomes a chore and dies
    (`rules/harness-stewardship.md` → "The structure is for the AGENT, not the person (HARD RULE)").

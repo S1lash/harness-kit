@@ -585,6 +585,28 @@ class ContainmentTests(TempCase):
             self.assertEqual(done.returncode, 2, tool + ": " + done.stdout + done.stderr)
             self.assertIn("self-heal", done.stderr, tool)
 
+    def test_a_contract_that_cannot_be_trusted_names_the_recovery_too(self):
+        """The refusal is right and the traceback was not — an entry reaching outside the base.
+
+        `ManifestMissing` was given a recovery command and `UnsafeEntry` was not, so the one
+        state where the kit is actively refusing to touch a person's disk reached them as a
+        stack trace. The remedy differs from the missing case — the file is there and one line
+        of it is wrong — so it is said differently.
+        """
+        base = Path(self.tmp.name) / "unsafe"
+        base.mkdir()
+        install_tools(base)
+        shutil.copy2(KIT_ROOT / "tools" / "check_portability.py", base / "tools")
+        write(base, ".engine-manifest.yml",
+              "version: 1.0.0\n\nengine:\n  - rules/\n  - ../outside/evil.py\n")
+        git(base, "init", "-q", "-b", "main")
+        for tool in ("check_kit.py", "check_portability.py"):
+            done = run_tool(base, tool, cwd=base)
+            self.assertEqual(done.returncode, 2, tool + ": " + done.stdout + done.stderr)
+            self.assertIn("cannot be trusted", done.stderr, tool)
+            self.assertIn("../outside/evil.py", done.stderr, tool)
+            self.assertNotIn("Traceback", done.stderr, tool)
+
     def test_an_entry_that_leaves_the_base_is_refused_at_the_parser(self):
         for entry in ("../outside/x", "/etc/passwd", "~/secrets", "C:/Windows", "..", "."):
             with self.assertRaises(manifest_lib.UnsafeEntry, msg=entry):
@@ -1346,13 +1368,29 @@ class DivergenceAndOutageTests(TempCase):
             self.assertIn(module, ("subprocess", "sys", "os", "json", "time", "re"),
                           "%s is not stdlib — sync.py must run with nothing installed" % module)
 
+    def shipped_python(self):
+        """Every python file the kit ships out of `tools/`, asked of the manifest.
+
+        Naming the files instead was how this invariant came to cover three of eight: git moved
+        behind `tools/lib/gitrun.py`, every tool started calling git through it, and the list
+        stayed as it was. `tools/tests/` is the one exclusion, and only because these very
+        assertions quote the banned arguments as literals — a scan of them reads as a violation
+        of itself.
+        """
+        names = [p for p in portability.shipped_paths(KIT_ROOT)
+                 if p.startswith("tools/") and p.endswith(".py")
+                 and not p.startswith("tools/tests/")]
+        # A guard whose input silently became empty passes forever while checking nothing.
+        self.assertIn("tools/lib/gitrun.py", names, "the manifest stopped shipping the git helper")
+        return names
+
     def test_no_force_or_rebase_is_ever_issued(self):
-        # Every python tool that touches git, not just this one: the invariant is about what the
-        # kit does to a person's repository, and it does not stop at one file. Look for them as
-        # passed ARGUMENTS, not as words — these files explain in prose that they never rebase,
-        # and a prose ban must not read as a violation of itself.
-        for name in ("sync.py", "update.py", "check_kit.py"):
-            source = kit_text("tools/" + name)
+        # Every python file the kit ships, not the ones somebody remembered: the invariant is
+        # about what the kit does to a person's repository, and it follows the code wherever the
+        # code goes. Look for them as passed ARGUMENTS, not as words — these files explain in
+        # prose that they never rebase, and a prose ban must not read as a violation of itself.
+        for name in self.shipped_python():
+            source = kit_text(name)
             for banned in ('"--force"', '"-f"', '"--hard"', '"rebase"', '"--force-with-lease"'):
                 self.assertNotIn(banned, source, "%s in %s disables the protection that makes "
                                                  "divergence recoverable" % (banned, name))
@@ -1361,14 +1399,22 @@ class DivergenceAndOutageTests(TempCase):
         """The invariant the whole update design rests on, and nothing was checking it.
 
         An update must never hand the person a conflict inside a file they did not write. That
-        holds today only because the updater issues `checkout` and nothing else — a property no
-        gate stated, so a merge added here would have shipped green.
+        holds today only because the update issues `checkout` and nothing else — a property no
+        gate stated, so a merge added here would have shipped green. It covers every pass that
+        touches the person's files, not only the entry point: the move and the sweep write to
+        their disk exactly as directly as the updater does.
         """
-        source = kit_text("tools/update.py")
-        for banned in ('"merge"', '"cherry-pick"', '"stash"', '"reset"', '"revert"'):
-            self.assertNotIn(banned, source,
-                             "%s can leave the person adjudicating a kit file they never wrote"
-                             % banned)
+        for name in self.shipped_python():
+            # `sync.py` is the one exclusion, and by design rather than by oversight: putting two
+            # sides together IS its job (`rules/device-sync.md` — never force, never drop a side).
+            # Nothing on the update path may merge, and nothing on the update path imports it.
+            if name == "tools/sync.py":
+                continue
+            source = kit_text(name)
+            for banned in ('"merge"', '"cherry-pick"', '"stash"', '"reset"', '"revert"'):
+                self.assertNotIn(banned, source,
+                                 "%s in %s can leave the person adjudicating a kit file they "
+                                 "never wrote" % (banned, name))
 
     def test_two_different_bases_pointed_at_one_place_are_named_not_merged(self):
         # A person who runs the installer again on a second machine as a NEW base, then points it
@@ -1775,6 +1821,61 @@ retired: []
         self.assertEqual(done.returncode, 1)
         self.assertIn("kit's own space", done.stderr)
 
+    def test_every_check_that_exists_is_actually_wired(self):
+        """A check nobody calls is a check that runs never, and it fails silently forever.
+
+        The orchestration is one list in `kitchecks.run`, so a check can be written, tested
+        directly, and left unconnected — every test of its BODY still passes. That is precisely
+        the shape that ships green and protects nothing.
+        """
+        import inspect
+        wiring = inspect.getsource(kitchecks.run)
+        defined = [name for name in dir(kitchecks) if name.startswith("check_")]
+        self.assertGreater(len(defined), 10, "the checks moved and this test found none")
+        for name in defined:
+            self.assertIn("%s(" % name, wiring, "%s is never called — it runs on no base" % name)
+
+    def test_a_declared_path_that_is_not_there_fails_the_structural_half(self):
+        write(self.root, ".engine-manifest.yml",
+              self.GATE_MANIFEST.replace("  - VERSION\n", "  - VERSION\n  - never-written.md\n"))
+        done = self.gate()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("never-written.md", done.stderr)
+
+    def test_a_path_listed_twice_fails_the_structural_half(self):
+        write(self.root, ".engine-manifest.yml",
+              self.GATE_MANIFEST.replace("  - VERSION\n", "  - VERSION\n  - VERSION\n"))
+        done = self.gate()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("twice", done.stderr)
+
+    def test_a_retired_path_that_still_ships_fails_the_structural_half(self):
+        write(self.root, "leftover.md", "still here\n")
+        write(self.root, ".engine-manifest.yml",
+              self.GATE_MANIFEST.replace("retired: []", "retired:\n  - leftover.md"))
+        done = self.gate()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("leftover.md", done.stderr)
+
+    def test_a_version_mirror_that_disagrees_fails_the_structural_half(self):
+        write(self.root, ".claude-plugin/plugin.json", '{"version": "9.9.9"}\n')
+        done = self.gate()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("VERSION", done.stderr)
+
+    def test_the_portability_scan_runs_on_any_base_not_only_a_release(self):
+        """The documented promise: `/harness-doctor` runs this gate and gets the scan with it.
+
+        The scan is one call inside the structural half. Losing it leaves every other check
+        passing, the summary line unchanged, and a kit shipping files that only work on the
+        machine they were written on.
+        """
+        write(self.root, "rules/helper.py", 'NOTES = "/Users/someone/notes"\n')
+        done = self.gate()
+        self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
+        self.assertIn("CP-1", done.stderr)
+        self.assertIn("rules/helper.py", done.stderr)
+
     def test_the_structural_half_stays_quiet_about_a_persons_own_files(self):
         # A person's base runs this half through /harness-doctor, where their own knowledge and
         # activities are exactly what is supposed to be there.
@@ -2163,10 +2264,17 @@ class PortabilityGateTests(TempCase):
         found = kitchecks.Report()
         kitchecks.check_kit_remote_is_this_repository(fork, found)
         self.assertIn("kit_remote:", found)
-        # The kit itself declares its own address, so it passes.
+
+        # And the matching case passes. It is asked of a fixture rather than of KIT_ROOT: this
+        # suite is an `engine:` path, so it runs on every base that installs the kit — and there
+        # `origin` is the person's OWN private repository, exactly as the installer sets it up.
+        # Asserting on the ambient origin made the check fire correctly and the assertion fail,
+        # so `/harness-doctor` told every owner their base's tooling was broken.
+        subprocess.run(["git", "-C", str(fork), "remote", "set-url", "origin",
+                        manifest_lib.read_kit_remote(fork)], check=True)
         clean = kitchecks.Report()
-        kitchecks.check_kit_remote_is_this_repository(KIT_ROOT, clean)
-        self.assertEqual(len(clean), 0)
+        kitchecks.check_kit_remote_is_this_repository(fork, clean)
+        self.assertEqual(len(clean), 0, list(clean))
 
     def test_a_shipped_tool_missing_from_the_catalogue_fails_the_release(self):
         found = kitchecks.Report()
@@ -2190,11 +2298,10 @@ class PortabilityGateTests(TempCase):
         kitchecks.check_kit_tools_run_everywhere(
             KIT_ROOT, ["tools/helper.sh"], found)
         self.assertIn("helper.sh", found)
-        paired = []
+        paired = kitchecks.Report()
         kitchecks.check_kit_tools_run_everywhere(
-            KIT_ROOT, ["tools/helper.sh", "tools/helper.ps1"],
-            lambda m, w="": paired.append(m))
-        self.assertEqual(paired, [])
+            KIT_ROOT, ["tools/helper.sh", "tools/helper.ps1"], paired)
+        self.assertEqual(len(paired), 0, list(paired))
 
     def test_the_kit_it_ships_today_is_clean(self):
         self.assertEqual([str(f) for f in portability.scan(KIT_ROOT)], [])
