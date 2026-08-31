@@ -21,8 +21,8 @@
   was in the original intent for this kit and is not in it. It is blocked on the same thing as
   the item above and for the same reason — infrastructure facts ARE credentials, mostly, so the
   home for them cannot be designed before the rule about what may be written down.
-- **`install.ps1` has never been executed.** It was audited line by line and every fault found was
-  fixed, and `WindowsInstallerTests` in `tools/tests/` guards what a read can prove — the
+- **`install.ps1` has never been executed.** What stands behind it is a line-by-line audit and
+  `WindowsInstallerTests` in `tools/tests/`, which guards what a read can prove — the
   byte-order mark, the file encodings, that no native command runs outside the error-handling
   helper, that every variable it reads is one it set, and that its prompts, health checks and
   kit-remote logic match the shell installer's exactly. None of that proves it runs. One

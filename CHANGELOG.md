@@ -4,7 +4,12 @@ The sanctioned history home for this repo (the one place `present-not-history` a
 change — like `knowledge/decisions.md` for decisions). The canon itself always describes the
 present; evolution is logged here.
 
-## 2026-08-31
+## 2026-08-31 — 0.2.1
+
+- `KNOWN-LIMITS.md` states the Windows evidence as what stands behind `install.ps1` today, not as
+  a list of things that were done to it.
+
+## 2026-08-31 — 0.2.0
 
 - The gate's checks move to `tools/lib/kitchecks.py`, leaving `tools/check_kit.py` to decide only
   how a person hears about them. A failure is one shape now — where to look, what is wrong, why it
