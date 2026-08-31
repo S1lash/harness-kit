@@ -14,6 +14,13 @@ import re
 from pathlib import Path
 
 MANIFEST_NAME = ".engine-manifest.yml"
+# Said whenever a recovery command needs the kit remote. Both remedies reach the kit through a
+# remote named `harness-kit`, which lives in git config and which no clone carries, so the
+# device that most needs the instruction is the one least likely to have it already.
+KIT_REMOTE_FALLBACK = (
+    "  Neither works without a connection to the kit. If git says there is no\n"
+    "  such remote, add it first:\n"
+    "    git remote add harness-kit <the address the kit lives at>\n")
 LIST_SECTIONS = ("engine", "template", "exclude", "retired", "migrations")
 
 _ENTRY = re.compile(r"^\s*-\s+(.+?)\s*$")
@@ -47,7 +54,8 @@ def explain_refusal(problem) -> str:
                 "  here will guess. Restore it with:\n"
                 "    git checkout harness-kit/main -- %s\n"
                 "  or, if the machinery is damaged too:\n"
-                "    python3 tools/update.py --self-heal\n" % (problem, MANIFEST_NAME))
+                "    python3 tools/update.py --self-heal\n"
+                "%s" % (problem, MANIFEST_NAME, KIT_REMOTE_FALLBACK))
     return ("the kit/person contract cannot be trusted: %s\n"
             "  An entry that reaches outside this base would be deleted, moved or\n"
             "  overwritten on the next update, so nothing here will act on the file\n"
@@ -55,7 +63,7 @@ def explain_refusal(problem) -> str:
             "    git checkout harness-kit/main -- %s\n"
             "  or, if the machinery is damaged too:\n"
             "    python3 tools/update.py --self-heal\n"
-            % (problem, MANIFEST_NAME, MANIFEST_NAME))
+            "%s" % (problem, MANIFEST_NAME, MANIFEST_NAME, KIT_REMOTE_FALLBACK))
 
 
 class UnsafeEntry(ValueError):

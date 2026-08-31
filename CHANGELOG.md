@@ -34,6 +34,21 @@ present; evolution is logged here.
 - The canon check rejected `- @rules/x.md`. A bulleted import is live, and `AGENTS.md` asks the
   agent to repair that list itself without saying the format is exact — so the tightening above
   turned into a false alarm on the check whose whole value is being believed.
+- The shipped suite ran `install.sh` against the base it was diagnosing. The installer reads a
+  filled `profile.md` as "this IS your base" and installs IN PLACE, so on every base that had
+  finished setup five tests failed and three runs staged the person's own untracked files. The
+  installer tests are author-side now — they need a pristine kit to point at, which a base is not
+  — and they point at a throwaway copy even there, so a wrong judgement cannot reach a real base.
+- Three fixtures relied on a git identity in the person's global config. The installer writes one
+  base-local, so on an ordinary base those tools reported the missing name instead of whatever
+  the test was about. One helper gives every fixture repository an identity of its own.
+- The git invariants are asked of the syntax tree rather than of the file's text. A comment
+  explaining that the kit never forces is not a violation of that; `'--force'` in single quotes
+  and `"push --force"` joined into one argument are, and a text scan missed both. The quiet
+  equivalents `rules/git-safety.md` names — `restore`, `clean -fd`, `branch -D`, and `checkout --`
+  with no ref between them — are covered now, and the invariant in `ARCHITECTURE.md` says so.
+- The recovery text for a broken contract named a remote no clone carries, so on a second device
+  both remedies were dead ends. It says how to add it.
 
 ## 2026-08-30
 

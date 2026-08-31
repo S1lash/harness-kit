@@ -179,11 +179,11 @@ def check_canon_listed_once(root, fail):
     # entry — a typo, a suffix, a stray word — CONTAINS the correct one and passes on it. The
     # rule then reaches no runtime while the gate calls the kit ready to ship.
     #
-    # A leading bullet or indent is not malformation: `- @rules/x.md` is a live import, and
-    # `AGENTS.md` tells the agent to repair this list itself without saying the format is
-    # exact. Rejecting the shape the contract invites is a false alarm on the one check whose
-    # whole value is being believed.
-    listed = {line.strip().lstrip("-*+ \t") for line in contract.splitlines()}
+    # A leading bullet, number or indent is not malformation: `- @rules/x.md` is a live
+    # import, and `AGENTS.md` tells the agent to repair this list itself without saying the
+    # format is exact. Rejecting a shape the contract invites is a false alarm on the one check
+    # whose whole value is being believed.
+    listed = {re.sub(r"^(?:[-*+]|\d+[.)])\s*", "", line.strip()) for line in contract.splitlines()}
     for name in rules:
         if ("@rules/%s" % name) not in listed:
             fail("AGENTS.md", "does not list the rule rules/%s" % name,

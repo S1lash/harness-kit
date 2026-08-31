@@ -235,8 +235,11 @@ guarded only by the current author's discipline should be read as exactly that:
 5. **`--force` and its quiet equivalents need the person, in the moment.** They destroy exactly
    what git normally refuses to (`rules/git-safety.md`).
    *Gated for the python tools* — every python file the manifest ships out of `tools/`, asked of
-   the manifest rather than named, so the scan follows the code when it moves. The installers are
-   not scanned, because PowerShell's unrelated `-Force` on `New-Item` would make it useless.
+   the manifest rather than named, so the scan follows the code when it moves, and read through
+   the syntax tree so prose about forcing is not mistaken for forcing. Covers the quiet
+   equivalents too: `restore`, `clean`, `branch -D`, and `checkout --` with no ref between them.
+   The installers are not scanned, because PowerShell's unrelated `-Force` on `New-Item` would
+   make it useless.
 6. **The structure is the agent's burden, never the person's.** A harness whose owner has to
    curate it becomes a chore and dies
    (`rules/harness-stewardship.md` → "The structure is for the AGENT, not the person (HARD RULE)").

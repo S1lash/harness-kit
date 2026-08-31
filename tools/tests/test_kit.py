@@ -12,6 +12,7 @@ Run:  python3 -m unittest discover -s tools/tests
 from __future__ import annotations
 
 import os
+import ast
 import re
 import shutil
 import subprocess
@@ -100,6 +101,94 @@ def kit_text(relpath: str) -> str:
     return (KIT_ROOT / relpath).read_text(encoding="utf-8")
 
 
+def kit_source(destination: Path) -> Path:
+    """A throwaway copy of this kit to point the installer at, never the live tree.
+
+    `install.sh` reads a filled `profile.md` as "this IS your base" and installs IN PLACE, which
+    on a person's base means it stages and rewrites their own repository. The installer tests
+    skip there — see `AUTHOR_SIDE` — and this is the second line of that defence: if the
+    judgement is ever wrong, what gets installed over is a copy in a temporary directory.
+    """
+    shutil.copytree(KIT_ROOT, destination, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+    # A fresh clone of the kit, which is what the installer is entitled to assume it was run
+    # from: it reads the kit's address off this repository's `origin` to leave the new base a
+    # remote it can be updated through. History is not copied — only the address matters.
+    init_repo(destination)
+    subprocess.run(["git", "-C", str(destination), "remote", "add", "origin",
+                    manifest_lib.read_kit_remote(KIT_ROOT)], check=True)
+    return destination
+
+
+def this_checkout_is_the_kit() -> bool:
+    """True only where the kit is authored, false on a base somebody installed it into.
+
+    `tools/tests/` is an `engine:` path, so this suite ships and `/harness-doctor` runs it on
+    every base. Most of it belongs there — it proves the machinery that base runs. The installer
+    end-to-end tests do not: they need a PRISTINE kit to point at, which a base is not and
+    cannot be made into, and a person has already installed. The kit's own remote is the honest
+    discriminator, and it is the same question `check_kit_remote_is_this_repository` asks.
+    """
+    declared = manifest_lib.read_kit_remote(KIT_ROOT)
+    origin = gitrun.run(KIT_ROOT, "remote", "get-url", "origin")
+    if not declared or origin.failed or not origin.out.strip():
+        return False
+    return manifest_lib.same_repository(declared, origin.out)
+
+
+AUTHOR_SIDE = unittest.skipUnless(
+    this_checkout_is_the_kit(),
+    "the installer is exercised where the kit is authored — this checkout is a base, and "
+    "install.sh would read it as one and install in place over it")
+
+
+def code_strings(source: str) -> set:
+    """What this code could pass as a git argument. Comments and docstrings are not in the tree.
+
+    A substring scan of the file text cannot tell an argument from prose, and these files explain
+    in their own words that they never force or rebase — quoting the banned flags is how they say
+    it. The syntax tree has no comments in it at all, and a docstring is recognisable, so the
+    question becomes what the code passes rather than what it says.
+
+    A whole literal counts (`"--force"`, `"rebase"`), and so does a FLAG inside a joined one
+    (`"push --force"`), which a search for a quoted token misses. A bare word inside a sentence
+    does not: `"…or restore it:"` is something a person reads, not something git receives.
+    """
+    tree = ast.parse(source)
+    prose = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if (body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)):
+            prose.add(id(body[0].value))
+    passed = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in prose:
+            passed.add(node.value)
+            passed |= {word for word in node.value.split() if word.startswith("-")}
+    return passed
+
+
+def git_argument_pairs(source: str) -> set:
+    """Every adjacent pair of literal arguments handed to a call in this source.
+
+    `checkout` is how an update replaces a kit path — `checkout <ref> -- <path>` writes what the
+    ref holds. With nothing between the two it is the opposite operation, and it throws away
+    whatever the person has not saved. Only the adjacency separates them.
+    """
+    pairs = set()
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call):
+            continue
+        literals = [a.value if isinstance(a, ast.Constant) and isinstance(a.value, str) else None
+                    for a in node.args]
+        for first, second in zip(literals, literals[1:]):
+            if first is not None and second is not None:
+                pairs.add((first, second))
+    return pairs
+
+
 def run_installer(source: Path, home: Path, answers: str, cwd: Path):
     """Run `install.sh` against a throwaway HOME, with the answers fed on stdin.
 
@@ -140,7 +229,29 @@ def bare_remote(path: Path) -> Path:
 
 def clone(remote: Path, path: Path) -> Path:
     subprocess.run(["git", "clone", "-q", str(remote), str(path)], check=True)
+    return identify(path)
+
+
+def identify(path: Path) -> Path:
+    """Give a fixture repository an identity of its OWN.
+
+    The `git()` helper passes one per invocation, which covers the commits it makes and nothing
+    else: `sync.py` and `update.py` run as separate processes and read the repository's config.
+    A machine with no global identity is the ordinary case on a person's base — the installer
+    writes one base-local — and there these tools reported the missing name instead of whatever
+    the test was about.
+    """
+    subprocess.run(["git", "-C", str(path), "config", "user.name", "t"], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "user.email", "t@example.invalid"],
+                   check=True)
     return path
+
+
+def init_repo(path: Path) -> Path:
+    """A fixture repository on `main`, with an identity, in one place so none can forget."""
+    path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "-C", str(path), "init", "-q", "-b", "main"], check=True)
+    return identify(path)
 
 
 class ManifestReaderTests(TempCase):
@@ -178,7 +289,7 @@ class SilentDivergenceTests(TempCase):
         write(self.base, "knowledge/note.md", "theirs\n")
         install_tools(self.base)
         shutil.copy2(KIT_ROOT / "tools" / "sync.py", self.base / "tools")
-        git(self.base, "init", "-q", "-b", "main")
+        init_repo(self.base)
 
     def run_sync(self, *args):
         return run_tool(self.base, "sync.py", *args, cwd=self.base)
@@ -192,7 +303,7 @@ class SilentDivergenceTests(TempCase):
         app = self.base / "projects" / "myapp"
         app.mkdir()
         write(app, "main.py", "print('hi')\n")
-        git(app, "init", "-q", "-b", "main")
+        init_repo(app)
         git(app, "add", "-A")
         git(app, "commit", "-qm", "the app")
         # A base with no remote has a louder problem, and its directive correctly wins. Give it
@@ -349,6 +460,7 @@ class SilentDivergenceTests(TempCase):
         self.assertNotEqual(saving.returncode, 0, "it saved over a base it could not read")
 
 
+@AUTHOR_SIDE
 class InstallerSafetyTests(TempCase):
     """Two ways the installer reached past what it was pointed at.
 
@@ -359,9 +471,7 @@ class InstallerSafetyTests(TempCase):
     """
 
     def source(self):
-        source = Path(self.tmp.name) / "src"
-        shutil.copytree(KIT_ROOT, source, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-        return source
+        return kit_source(self.tmpdir / "src")
 
     def setUp(self):
         super().setUp()
@@ -435,7 +545,7 @@ class InstallerSafetyTests(TempCase):
         nested = source / "projects" / "newapp"
         nested.mkdir(parents=True)
         (nested / "main.py").write_text("print('hi')\n", encoding="utf-8")
-        subprocess.run(["git", "-C", str(nested), "init", "-q"], check=True)
+        init_repo(nested)
         done = run_installer(
             source, self.home,
             "%s\nharness\nEnglish\nn\nn\nn\nn\nElena\ne@example.invalid\nn\n" % self.home,
@@ -467,7 +577,7 @@ class EnclosingRepositoryTests(TempCase):
         (self.company / "src").mkdir(parents=True)
         write(self.company, ".env", "DB_PASSWORD=s3cr3t\n")
         write(self.company, "src/wip.py", "half-finished\n")
-        git(self.company, "init", "-q", "-b", "main")
+        init_repo(self.company)
         git(self.company, "add", "-A")
         git(self.company, "commit", "-qm", "the company's repository")
 
@@ -495,7 +605,7 @@ class EnclosingRepositoryTests(TempCase):
         self.assertIn("STOP", done.stdout)
 
     def test_a_base_that_is_its_own_repository_is_unaffected(self):
-        git(self.base, "init", "-q", "-b", "main")
+        init_repo(self.base)
         done = self.run_sync("status")
         self.assertNotIn("NOT ITS OWN", done.stdout)
 
@@ -511,7 +621,7 @@ class GitHelperTests(TempCase):
     def setUp(self):
         super().setUp()
         self.root = Path(self.tmp.name)
-        git(self.root, "init", "-q", "-b", "main")
+        init_repo(self.root)
 
     def test_leading_whitespace_survives(self):
         """Porcelain encodes state in columns 1 and 2.
@@ -579,7 +689,7 @@ class ContainmentTests(TempCase):
         shutil.copy2(KIT_ROOT / "tools" / "check_portability.py", bare / "tools")
         # A tracked base, so `update.py` reaches the manifest read rather than stopping earlier
         # on "not tracked" — the manifest-less case is what is under test here.
-        git(bare, "init", "-q", "-b", "main")
+        init_repo(bare)
         for tool in ("update.py", "check_kit.py", "check_portability.py"):
             done = run_tool(bare, tool, cwd=bare)
             self.assertEqual(done.returncode, 2, tool + ": " + done.stdout + done.stderr)
@@ -599,8 +709,19 @@ class ContainmentTests(TempCase):
         shutil.copy2(KIT_ROOT / "tools" / "check_portability.py", base / "tools")
         write(base, ".engine-manifest.yml",
               "version: 1.0.0\n\nengine:\n  - rules/\n  - ../outside/evil.py\n")
-        git(base, "init", "-q", "-b", "main")
-        for tool in ("check_kit.py", "check_portability.py"):
+        init_repo(base)
+        # `update.py` reaches the manifest only after resolving and fetching its kit remote, so
+        # it needs one that exists — without it the arm is never entered and the guard is a
+        # guard over nothing.
+        kit = Path(self.tmp.name) / "kit.git"
+        bare_remote(kit)
+        seed = clone(kit, Path(self.tmp.name) / "kit-seed")
+        write(seed, "VERSION", "1.0.0\n")
+        git(seed, "add", "-A")
+        git(seed, "commit", "-qm", "the kit")
+        git(seed, "push", "-q", "-u", "origin", "main")
+        git(base, "remote", "add", "harness-kit", str(kit))
+        for tool in ("check_kit.py", "check_portability.py", "update.py"):
             done = run_tool(base, tool, cwd=base)
             self.assertEqual(done.returncode, 2, tool + ": " + done.stdout + done.stderr)
             self.assertIn("cannot be trusted", done.stderr, tool)
@@ -722,7 +843,7 @@ class UpdateEndToEndTests(TempCase):
         write(self.kit, "rules/added.md", "arrived with this version\n")
         write(self.kit, "seed.md", "pristine seed\n")
         write(self.kit, "VERSION", "1.0.0\n")
-        git(self.kit, "init", "-q", "-b", "main")
+        init_repo(self.kit)
         git(self.kit, "add", "-A")
         git(self.kit, "commit", "-qm", "kit")
 
@@ -735,7 +856,7 @@ class UpdateEndToEndTests(TempCase):
         write(self.base, "mine/notes.md", "theirs\n")
         write(self.base, "VERSION", "0.9.0\n")
         install_tools(self.base)
-        git(self.base, "init", "-q", "-b", "main")
+        init_repo(self.base)
         git(self.base, "add", "-A")
         git(self.base, "commit", "-qm", "their base")
         git(self.base, "remote", "add", "harness-kit", str(self.kit))
@@ -813,7 +934,7 @@ class UpdateEndToEndTests(TempCase):
         write(theirs, "rules/canon.md", "the person's stale copy\n")
         write(theirs, "VERSION", "0.0.1\n")
         write(theirs, ".engine-manifest.yml", declared)
-        git(theirs, "init", "-q", "-b", "main")
+        init_repo(theirs)
         git(theirs, "add", "-A"); git(theirs, "commit", "-qm", "their copy")
 
         # `upstream` is an ordinary name for it, and git lists remotes alphabetically — so the
@@ -1200,9 +1321,7 @@ class SyncTests(TempCase):
         self.base.mkdir(parents=True)
         (self.base / "tools").mkdir()
         shutil.copy2(KIT_ROOT / "tools" / "sync.py", self.base / "tools" / "sync.py")
-        git(self.base, "init", "-q", "-b", "main")
-        git(self.base, "config", "user.name", "t")
-        git(self.base, "config", "user.email", "t@example.invalid")
+        init_repo(self.base)
         write(self.base, "note.md", "first\n")
         write(self.base, ".gitattributes", "* text=auto\n")
         git(self.base, "add", "-A")
@@ -1318,8 +1437,6 @@ class DivergenceAndOutageTests(TempCase):
         # commit, which is a different situation entirely — covered by its own test below.
         seed = root / "seed"
         clone(self.remote, seed)
-        git(seed, "config", "user.name", "t")
-        git(seed, "config", "user.email", "t@example.invalid")
         write(seed, "base.md", "the base\n")
         git(seed, "add", "-A")
         git(seed, "commit", "-qm", "start")
@@ -1329,8 +1446,6 @@ class DivergenceAndOutageTests(TempCase):
 
     def _clone(self, path: Path) -> Path:
         clone(self.remote, path)
-        git(path, "config", "user.name", "t")
-        git(path, "config", "user.email", "t@example.invalid")
         (path / "tools").mkdir(exist_ok=True)
         shutil.copy2(KIT_ROOT / "tools" / "sync.py", path / "tools" / "sync.py")
         return path
@@ -1380,20 +1495,35 @@ class DivergenceAndOutageTests(TempCase):
         names = [p for p in portability.shipped_paths(KIT_ROOT)
                  if p.startswith("tools/") and p.endswith(".py")
                  and not p.startswith("tools/tests/")]
-        # A guard whose input silently became empty passes forever while checking nothing.
-        self.assertIn("tools/lib/gitrun.py", names, "the manifest stopped shipping the git helper")
+        # A guard whose input quietly shrank passes forever while covering less. Dropping a tool
+        # from the manifest is caught by the release gate and not by the structural one, so the
+        # scan asks the disk too and fails on anything the manifest stopped naming.
+        on_disk = sorted(str(f.relative_to(KIT_ROOT)).replace("\\", "/")
+                         for f in (KIT_ROOT / "tools").rglob("*.py")
+                         if "tests" not in f.parts and "__pycache__" not in f.parts)
+        self.assertEqual(sorted(names), on_disk,
+                         "a python tool on disk that the manifest no longer ships is a tool this "
+                         "invariant stopped covering")
         return names
 
     def test_no_force_or_rebase_is_ever_issued(self):
         # Every python file the kit ships, not the ones somebody remembered: the invariant is
         # about what the kit does to a person's repository, and it follows the code wherever the
-        # code goes. Look for them as passed ARGUMENTS, not as words — these files explain in
-        # prose that they never rebase, and a prose ban must not read as a violation of itself.
+        # code goes. Asked of the syntax tree, so what a file SAYS about forcing is not what it
+        # is judged on — only what it passes.
+        banned = {"--force", "-f", "-fd", "--hard", "rebase", "--force-with-lease",
+                  # The quiet equivalents. `rules/git-safety.md` gives them the standing of
+                  # `--force`: nothing announces the loss, and the file afterwards simply reads
+                  # as it did before the work existed.
+                  "restore", "clean", "-D"}
         for name in self.shipped_python():
             source = kit_text(name)
-            for banned in ('"--force"', '"-f"', '"--hard"', '"rebase"', '"--force-with-lease"'):
-                self.assertNotIn(banned, source, "%s in %s disables the protection that makes "
-                                                 "divergence recoverable" % (banned, name))
+            found = banned & code_strings(source)
+            self.assertEqual(found, set(),
+                             "%s in %s disables the protection that makes divergence recoverable"
+                             % (", ".join(sorted(found)), name))
+            self.assertNotIn(("checkout", "--"), git_argument_pairs(source),
+                             "%s discards uncommitted work with nothing to announce it" % name)
 
     def test_the_updater_replaces_and_never_merges(self):
         """The invariant the whole update design rests on, and nothing was checking it.
@@ -1404,17 +1534,17 @@ class DivergenceAndOutageTests(TempCase):
         touches the person's files, not only the entry point: the move and the sweep write to
         their disk exactly as directly as the updater does.
         """
+        banned = {"merge", "cherry-pick", "stash", "reset", "revert"}
         for name in self.shipped_python():
-            # `sync.py` is the one exclusion, and by design rather than by oversight: putting two
-            # sides together IS its job (`rules/device-sync.md` — never force, never drop a side).
-            # Nothing on the update path may merge, and nothing on the update path imports it.
-            if name == "tools/sync.py":
-                continue
-            source = kit_text(name)
-            for banned in ('"merge"', '"cherry-pick"', '"stash"', '"reset"', '"revert"'):
-                self.assertNotIn(banned, source,
-                                 "%s in %s can leave the person adjudicating a kit file they "
-                                 "never wrote" % (banned, name))
+            # `merge` in `sync.py` is the one exception, by design rather than by oversight:
+            # putting two sides together IS its job (`rules/device-sync.md` — never force, never
+            # drop a side). The other four have no licence there either, and nothing on the
+            # update path imports it.
+            allowed = {"merge"} if name == "tools/sync.py" else set()
+            found = (banned - allowed) & code_strings(kit_text(name))
+            self.assertEqual(found, set(),
+                             "%s in %s can leave the person adjudicating a kit file they never "
+                             "wrote" % (", ".join(sorted(found)), name))
 
     def test_two_different_bases_pointed_at_one_place_are_named_not_merged(self):
         # A person who runs the installer again on a second machine as a NEW base, then points it
@@ -1422,9 +1552,7 @@ class DivergenceAndOutageTests(TempCase):
         # the person must be told what it means for them, and nothing may be merged blindly.
         stranger = self.phone.parent / "stranger"
         stranger.mkdir()
-        git(stranger, "init", "-q", "-b", "main")
-        git(stranger, "config", "user.name", "t")
-        git(stranger, "config", "user.email", "t@example.invalid")
+        init_repo(stranger)
         (stranger / "tools").mkdir()
         shutil.copy2(KIT_ROOT / "tools" / "sync.py", stranger / "tools" / "sync.py")
         write(stranger, "fresh.md", "a brand new base\n")
@@ -1464,7 +1592,7 @@ class SelfHealTests(TempCase):
         write(self.kit, "seed.md", "pristine seed\n")
         write(self.kit, "VERSION", "1.0.0\n")
         install_tools(self.kit)
-        git(self.kit, "init", "-q", "-b", "main")
+        init_repo(self.kit)
         git(self.kit, "add", "-A")
         git(self.kit, "commit", "-qm", "kit")
 
@@ -1474,7 +1602,7 @@ class SelfHealTests(TempCase):
         write(self.base, "seed.md", "pristine seed\n")
         write(self.base, "VERSION", "0.9.0\n")
         install_tools(self.base)
-        git(self.base, "init", "-q", "-b", "main")
+        init_repo(self.base)
         git(self.base, "add", "-A")
         git(self.base, "commit", "-qm", "their base")
         git(self.base, "remote", "add", "harness-kit", str(self.kit))
@@ -1510,6 +1638,7 @@ class SelfHealTests(TempCase):
 
 
 @unittest.skipIf(shutil.which("bash") is None, "the shell installer needs bash")
+@AUTHOR_SIDE
 class InstallerTests(TempCase):
     """The installer, run the way a person runs it — once, on a machine that has nothing."""
 
@@ -1520,10 +1649,11 @@ class InstallerTests(TempCase):
         super().setUp()
         self.home = self.tmpdir / "home"
         self.home.mkdir(parents=True)
+        self.src = kit_source(self.tmpdir / "src")
 
     def install(self):
         answers = "\n".join(a.format(home=self.home) for a in self.ANSWERS) + "\n"
-        return run_installer(KIT_ROOT, self.home, answers, cwd=KIT_ROOT)
+        return run_installer(self.src, self.home, answers, cwd=self.src)
 
     def test_a_fresh_install_leaves_a_base_that_can_travel(self):
         done = self.install()
@@ -1642,7 +1772,7 @@ class ReleaseGateTests(TempCase):
     def test_an_edited_seed_that_already_shipped_fails_the_release(self):
         write(self.root, "VERSION", "1.0.0\n")
         write(self.root, "seed.md", "as released\n")
-        git(self.root, "init", "-q", "-b", "main")
+        init_repo(self.root)
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "release")
         write(self.root, "seed.md", "edited after the release\n")
@@ -1652,7 +1782,7 @@ class ReleaseGateTests(TempCase):
 
     def test_a_seed_added_since_the_release_is_fine(self):
         write(self.root, "VERSION", "1.0.0\n")
-        git(self.root, "init", "-q", "-b", "main")
+        init_repo(self.root)
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "release")
         write(self.root, "new-seed.md", "arrived after\n")
@@ -1661,7 +1791,7 @@ class ReleaseGateTests(TempCase):
 
     def test_nothing_is_frozen_before_the_first_release(self):
         write(self.root, "seed.md", "as committed\n")  # no VERSION at the ref
-        git(self.root, "init", "-q", "-b", "main")
+        init_repo(self.root)
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "unreleased")
         write(self.root, "seed.md", "still being written\n")
@@ -1673,7 +1803,7 @@ class ReleaseGateTests(TempCase):
         # author left under activities/ or knowledge/ lands in every base as though it were theirs.
         write(self.root, "activities/_index.md", "the seed\n")
         write(self.root, "activities/my-work-log.md", "the author's own notes\n")
-        git(self.root, "init", "-q", "-b", "main")
+        init_repo(self.root)
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "kit")
         kitchecks.check_person_space_ships_pristine(
@@ -1683,7 +1813,7 @@ class ReleaseGateTests(TempCase):
 
     def test_the_seed_itself_is_allowed_to_ship(self):
         write(self.root, "activities/_index.md", "the seed\n")
-        git(self.root, "init", "-q", "-b", "main")
+        init_repo(self.root)
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "kit")
         kitchecks.check_person_space_ships_pristine(
@@ -1730,7 +1860,7 @@ retired: []
         write(self.root, "CLAUDE.md", "@AGENTS.md\n")
         write(self.root, "seed.md", "as released\n")
         install_tools(self.root)
-        git(self.root, "init", "-q", "-b", "main")
+        init_repo(self.root)
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "release 1.0.0")
 
@@ -1828,12 +1958,18 @@ retired: []
         directly, and left unconnected — every test of its BODY still passes. That is precisely
         the shape that ships green and protects nothing.
         """
+        import ast
         import inspect
-        wiring = inspect.getsource(kitchecks.run)
+        called = {node.func.id for node in ast.walk(ast.parse(inspect.getsource(kitchecks.run)))
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
         defined = [name for name in dir(kitchecks) if name.startswith("check_")]
         self.assertGreater(len(defined), 10, "the checks moved and this test found none")
         for name in defined:
-            self.assertIn("%s(" % name, wiring, "%s is never called — it runs on no base" % name)
+            # Asked of the syntax tree, not of the text: a call commented out is not a call, and
+            # a substring search cannot tell the difference.
+            self.assertIn(name, called, "%s is never called — it runs on no base" % name)
+        self.assertIn("scan", str(inspect.getsource(kitchecks.run)),
+                      "the portability scan is what /harness-doctor gets on a person's base")
 
     def test_a_declared_path_that_is_not_there_fails_the_structural_half(self):
         write(self.root, ".engine-manifest.yml",
@@ -2249,6 +2385,18 @@ class PortabilityGateTests(TempCase):
             clean)
         self.assertEqual(len(clean), 0)
 
+    def test_a_path_in_both_engine_and_template_is_caught(self):
+        """The arm nobody tested, and the one whose failure is silent on a person's disk.
+
+        `engine:` is replaced wholesale and `template:` is never overwritten, so a path in both
+        resolves to engine — and the file the person filled in is quietly replaced by the kit's
+        blank one on their next update. `profile.md` is the obvious candidate.
+        """
+        found = kitchecks.Report()
+        kitchecks.check_no_double_listing(["rules/", "profile.md"], ["profile.md"], found)
+        self.assertIn("both engine: and template:", found)
+        self.assertIn("profile.md", found)
+
     def test_a_fork_that_kept_the_upstream_address_fails_the_release(self):
         """Fork the kit, forget `kit_remote:`, and every base you set up goes upstream.
 
@@ -2258,7 +2406,7 @@ class PortabilityGateTests(TempCase):
         """
         fork = Path(self.tmp.name) / "fork"
         shutil.copytree(KIT_ROOT, fork, ignore=shutil.ignore_patterns(".git", "__pycache__"))
-        subprocess.run(["git", "-C", str(fork), "init", "-q", "-b", "main"], check=True)
+        init_repo(fork)
         subprocess.run(["git", "-C", str(fork), "remote", "add", "origin",
                         "https://github.com/someone/their-fork"], check=True)
         found = kitchecks.Report()
