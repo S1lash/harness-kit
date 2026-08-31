@@ -39,6 +39,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import NamedTuple
 
 if hasattr(signal, "SIGPIPE"):
     # Piping this into `head` closes the pipe early. That is the reader's
@@ -48,6 +49,7 @@ if hasattr(signal, "SIGPIPE"):
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from lib import gitrun  # noqa: E402
 from lib import manifest as manifest_lib  # noqa: E402
 from lib import migrate as migrate_lib  # noqa: E402
 from lib import retire as retire_lib  # noqa: E402
@@ -60,23 +62,19 @@ VERSION_FILE = "VERSION"
 # update mechanism itself is made of.
 SELF_HEAL_PATHS = ("tools/update.py", "tools/lib", ".engine-manifest.yml")
 PREFIX = "[harness-update]"
+# The line an agent is required to act on. One spelling, in one place: it is the contract
+# between these scripts and whatever is reading their output.
+DIRECTIVE = "YOU MUST:"
 
 
 def git(*args, root: Path, timeout=None):
-    """Run git in the base. Returns (returncode, stdout, stderr)."""
-    try:
-        done = subprocess.run(
-            ["git", "-C", str(root)] + list(args),
-            capture_output=True, text=True, timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        return 124, "", "timed out after %ss" % timeout
-    return done.returncode, done.stdout.rstrip("\n"), done.stderr.strip()
+    """Run git in `root`. One binding of `gitrun.run`, so every call here shares its contract."""
+    return gitrun.run(root, *args, timeout=timeout)
 
 
 def git_ok(*args, root: Path, timeout=None):
-    code, out, _ = git(*args, root=root, timeout=timeout)
-    return out if code == 0 else None
+    """Output when git succeeded, else None. Only where empty and failed mean the same thing."""
+    return gitrun.ok(root, *args, timeout=timeout)
 
 
 def ref_has_path(ref: str, relpath: str, root: Path) -> bool:
@@ -153,7 +151,7 @@ def mode_check(root: Path, remote: str, branch: str, max_age: int) -> int:
     if there and here and there != here:
         print("%s a newer version of the kit is out: %s (this base is on %s)"
               % (PREFIX, there, here))
-        print("YOU MUST: mention it once, in one plain sentence, and offer to bring it in "
+        print(DIRECTIVE + " mention it once, in one plain sentence, and offer to bring it in "
               "with /harness-update. Do not explain versions unless they ask.")
     return 0
 
@@ -173,7 +171,16 @@ def mode_self_heal(root: Path, remote: str, branch: str, argv: list) -> int:
     return subprocess.run([sys.executable, str(Path(__file__).resolve())] + rerun).returncode
 
 
-def incoming_sections(ref: str, root: Path) -> dict:
+class Incoming(NamedTuple):
+    """What the manifest being SHIPPED declares. Named so a typo is an error, not an empty list."""
+    engine: list
+    template: list
+    exclude: list
+    migrations: list
+    retired: list
+
+
+def incoming_sections(ref: str, root: Path) -> Incoming:
     """What the manifest being SHIPPED declares, not what this base already knew.
 
     The manifest is itself one of the paths an update replaces, so anything a release declares —
@@ -183,14 +190,11 @@ def incoming_sections(ref: str, root: Path) -> dict:
     """
     text = ref_read_path(ref, manifest_lib.MANIFEST_NAME, root)
     sections = {}
-    for name in ("engine", "template", "exclude", "migrations", "retired"):
-        if text:
-            sections[name] = [p.rstrip("/") if name == "engine" else p
-                              for p in manifest_lib.parse_section(name, text)]
-        else:
-            sections[name] = [p.rstrip("/") if name == "engine" else p
-                              for p in manifest_lib.read_section(name, root)]
-    return sections
+    for name in Incoming._fields:
+        entries = (manifest_lib.parse_section(name, text) if text
+                   else manifest_lib.read_section(name, root))
+        sections[name] = [p.rstrip("/") for p in entries] if name == "engine" else list(entries)
+    return Incoming(**sections)
 
 
 def dirty_engine_paths(root: Path, ref: str, engine_paths: list) -> list:
@@ -289,7 +293,7 @@ def enclosing_repository(root: Path):
     return None if Path(toplevel).resolve() == root.resolve() else toplevel
 
 
-def preview(root: Path, ref: str, engine_paths: list, incoming: dict,
+def preview(root: Path, ref: str, engine_paths: list, incoming: Incoming,
             protected_before: list, version_before: str, version_upstream: str) -> int:
     """What an update WOULD do, said in the terms the real run uses.
 
@@ -298,14 +302,14 @@ def preview(root: Path, ref: str, engine_paths: list, incoming: dict,
     spawning the script against a configured remote.
     """
     print("%s dry-run — would replace these from %s:" % (PREFIX, ref))
-    for relpath in sorted(set(engine_paths) | set(incoming["engine"])):
+    for relpath in sorted(set(engine_paths) | set(incoming.engine)):
         if not ref_has_path(ref, relpath, root):
             continue
         # `-R` reverses the direction: without it this reads ref -> here,
         # so everything the update ADDS renders as a deletion.
         stat = git_ok("diff", "--stat", "-R", ref, "--", relpath, root=root)
         print("  - %s%s" % (relpath, "" if not stat else "\n      " + stat.replace("\n", "\n      ")))
-    for relpath in incoming["template"]:
+    for relpath in incoming.template:
         if not (root / relpath).exists() and ref_has_path(ref, relpath, root):
             print("  + add %s (a seed this base never received)" % relpath)
     # The guards inside these two read `engine:`/`exclude:` from the manifest on disk, which
@@ -314,14 +318,14 @@ def preview(root: Path, ref: str, engine_paths: list, incoming: dict,
     # against one manifest and apply against another; a refusal is reported as a refusal
     # rather than crashing the preview.
     try:
-        for move in migrate_lib.run(root, dry_run=True, entries=incoming["migrations"]):
+        for move in migrate_lib.run(root, dry_run=True, entries=incoming.migrations):
             print("  > move %s to %s" % (move.source, move.destination))
     except migrate_lib.MigrationRefused as refusal:
         print("  ! a declared move cannot be previewed from this base yet: %s" % refusal)
     try:
         removed = retire_lib.run(
-            root, dry_run=True, entries=incoming["retired"],
-            protected=sorted(set(protected_before) | set(incoming["exclude"])))
+            root, dry_run=True, entries=incoming.retired,
+            protected=sorted(set(protected_before) | set(incoming.exclude)))
     except retire_lib.RetirementRefused as refusal:
         print("  ! a declared removal names paths this base calls its own: %s"
               % ", ".join(refusal.trespassing))
@@ -366,10 +370,10 @@ def report(root: Path, remote: str, resolved: int, changed: int, absent: int,
     for entry in stale_global_wiring(root):
         print("  ! %s still points somewhere else — that runtime is not reading this base" % entry)
     if not changed and not removed and not seeded and not carried:
-        print("YOU MUST: nothing arrived — the base was already current. Say so in one short "
+        print(DIRECTIVE + " nothing arrived — the base was already current. Say so in one short "
               "line only if the person asked; otherwise say nothing.")
         return 0
-    print("YOU MUST: read CHANGELOG.md for what landed between those two versions, tell the "
+    print(DIRECTIVE + " read CHANGELOG.md for what landed between those two versions, tell the "
           "person in one or two plain sentences what it means for THEM — not what changed in "
           "the kit — and save (python3 tools/sync.py save \"...\"). If none of it touches how "
           "they work, say that plainly and save anyway.")
@@ -408,7 +412,7 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
             # canon is its own, and adopting a kit path is a decision made one path at a time.
             print("%s this base shares no paths with the kit, so an update has nothing to "
                   "replace." % PREFIX)
-            print("YOU MUST: say nothing unless asked. Adopting a kit path is a deliberate "
+            print(DIRECTIVE + " say nothing unless asked. Adopting a kit path is a deliberate "
                   "choice — read the manifest's header before adding one to engine:.")
             return 0
         return fail("the manifest has no engine: section — nothing could be updated safely.",
@@ -427,7 +431,7 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
     # likeliest of all of them to collide: until this run it was the person's own space, so
     # whatever is sitting there is theirs. Computing it here rather than at the checkout loop is
     # the whole point — the one pass whose job is preventing loss cannot run after the loss.
-    adopted = [p for p in incoming["engine"] if p not in engine_paths]
+    adopted = [p for p in incoming.engine if p not in engine_paths]
     dirty = dirty_engine_paths(root, ref, engine_paths + adopted)
     if dirty:
         return fail(
@@ -445,7 +449,7 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
         return preview(root, ref, engine_paths, incoming,
                        protected_before, version_before, version_upstream)
 
-    seeded = seed_missing_templates(root, ref, incoming["template"])
+    seeded = seed_missing_templates(root, ref, incoming.template)
     resolved, absent, changed = 0, 0, 0
     changed_paths, added_paths = [], []
 
@@ -497,7 +501,7 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
                   % (move.source, move.destination, " — %s" % move.note if move.note else ""))
         print("%s the kit paths above are already replaced. Nothing has been moved."
               % PREFIX)
-        print("YOU MUST: tell the person in plain words what is about to move and what it means "
+        print(DIRECTIVE + " tell the person in plain words what is about to move and what it means "
               "for them — these are their own files, not the kit's — then run the same command "
               "with --confirm once they are content.")
         return 0
@@ -513,7 +517,7 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
 
     try:
         removed = retire_lib.run(
-            root, protected=sorted(set(protected_before) | set(incoming["exclude"])))
+            root, protected=sorted(set(protected_before) | set(incoming.exclude)))
     except retire_lib.RetirementRefused as refusal:
         blocked.append("refusing to drop paths that belong to the person, not the kit: %s"
                        % ", ".join(refusal.trespassing))

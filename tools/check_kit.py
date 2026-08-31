@@ -26,6 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from lib import gitrun  # noqa: E402
 from lib import manifest as manifest_lib  # noqa: E402
 from lib import migrate as migrate_lib  # noqa: E402
 from lib import portability  # noqa: E402
@@ -35,8 +36,11 @@ PLUGIN_MANIFEST = ".claude-plugin/plugin.json"
 
 
 def git(*args, root: Path):
-    done = subprocess.run(["git", "-C", str(root)] + list(args), capture_output=True, text=True)
-    return done.returncode, done.stdout.rstrip("\n")
+    """Run git in `root`. Same contract as everywhere else, stderr included.
+
+    This one used to discard stderr, so a failure here could only ever be "it did not work".
+    """
+    return gitrun.run(root, *args)
 
 
 files_under = manifest_lib.files_under
@@ -83,7 +87,8 @@ def check_kit_remote_is_this_repository(root, fail):
     declared = manifest_lib.read_kit_remote(root)
     if not declared:
         return
-    code, actual = git("remote", "get-url", "origin", root=root)
+    probe = git("remote", "get-url", "origin", root=root)
+    code, actual = probe.code, probe.out
     if code != 0 or not actual.strip():
         return  # no origin to compare against; nothing can be concluded
     if not manifest_lib.same_repository(declared, actual):
@@ -277,17 +282,20 @@ def check_kit_tools_run_everywhere(root, engine, fail):
 
 def check_version_moved(root, engine, ref, fail):
     """A release that changes the kit without moving VERSION is invisible to everyone."""
-    code, _ = git("rev-parse", "--verify", "--quiet", ref, root=root)
+    result = git("rev-parse", "--verify", "--quiet", ref, root=root)
+    code, _ = result.code, result.out
     if code != 0:
         return
     changed = []
     for entry in engine:
-        code, out = git("diff", "--name-only", ref, "--", entry.rstrip("/"), root=root)
+        result = git("diff", "--name-only", ref, "--", entry.rstrip("/"), root=root)
+        code, out = result.code, result.out
         if code == 0 and out.strip():
             changed.append(entry)
     if not changed:
         return
-    code, before = git("show", "%s:VERSION" % ref, root=root)
+    result = git("show", "%s:VERSION" % ref, root=root)
+    code, before = result.code, result.out
     now = (root / "VERSION").read_text(encoding="utf-8").strip()
     if code != 0:
         # No baseline to compare against — say so rather than passing in silence, which is
@@ -298,7 +306,8 @@ def check_version_moved(root, engine, ref, fail):
         fail("kit paths changed since %s but VERSION is still %s" % (ref, now),
              "Nobody's daily check will notice, and the updater cannot tell them what arrived.")
         return
-    code, out = git("diff", "--name-only", ref, "--", "CHANGELOG.md", root=root)
+    result = git("diff", "--name-only", ref, "--", "CHANGELOG.md", root=root)
+    code, out = result.code, result.out
     if code == 0 and not out.strip():
         fail("VERSION moved since %s but CHANGELOG.md did not" % ref,
              "The update tells each person what changed by reading it.")
@@ -315,7 +324,8 @@ def check_seeds_unchanged(root, template, ref, fail):
     A seed added since the ref is fine — seeding delivers it. Only an edit to one that already
     existed is the trap.
     """
-    code, _ = git("rev-parse", "--verify", "--quiet", ref, root=root)
+    result = git("rev-parse", "--verify", "--quiet", ref, root=root)
+    code, _ = result.code, result.out
     if code != 0:
         return
     if git("cat-file", "-e", "%s:VERSION" % ref, root=root)[0] != 0:
@@ -324,7 +334,8 @@ def check_seeds_unchanged(root, template, ref, fail):
     for entry in template:
         if not git("cat-file", "-e", "%s:%s" % (ref, entry), root=root)[0] == 0:
             continue  # new since the ref — seeding delivers it
-        code, out = git("diff", "--name-only", ref, "--", entry, root=root)
+        result = git("diff", "--name-only", ref, "--", entry, root=root)
+        code, out = result.code, result.out
         if code == 0 and out.strip():
             fail("a seed that already exists on every base was edited: %s" % entry,
                  "Nobody who has it will ever see the change. Move the part the kit needs to "
@@ -356,7 +367,8 @@ def check_person_space_ships_pristine(root, template, exclude, fail):
     for entry in exclude:
         if not entry.endswith("/"):
             continue
-        code, listing = git("ls-files", "--", entry, root=root)
+        result = git("ls-files", "--", entry, root=root)
+        code, listing = result.code, result.out
         if code != 0:
             continue
         for relpath in listing.splitlines():
@@ -374,7 +386,8 @@ def check_removals_retired(root, engine, retired, ref, fail):
     the kit no longer has. So every removal inside an engine path needs a `retired:` line, and
     forgetting one is invisible until a person is carrying a file the kit stopped shipping.
     """
-    code, _ = git("rev-parse", "--verify", "--quiet", ref, root=root)
+    result = git("rev-parse", "--verify", "--quiet", ref, root=root)
+    code, _ = result.code, result.out
     if code != 0:
         print("  (skipped removal check — %s is not available here)" % ref)
         return
@@ -382,7 +395,8 @@ def check_removals_retired(root, engine, retired, ref, fail):
     for entry in engine:
         if not entry.endswith("/"):
             continue
-        code, listing = git("ls-tree", "-r", "--name-only", ref, "--", entry, root=root)
+        result = git("ls-tree", "-r", "--name-only", ref, "--", entry, root=root)
+        code, listing = result.code, result.out
         if code != 0:
             continue
         before = {line for line in listing.splitlines() if line}

@@ -24,6 +24,9 @@ BASE = Path(__file__).resolve().parent.parent
 NETWORK_TIMEOUT_SECONDS = 90
 UNSAVED_SAMPLE_SIZE = 8
 PREFIX = "[harness-sync]"
+# The line an agent is required to act on. One spelling, in one place: it is the contract
+# between these scripts and whatever is reading their output.
+DIRECTIVE = "YOU MUST:"
 
 
 class GitError(Exception):
@@ -31,7 +34,17 @@ class GitError(Exception):
 
 
 def git(*args, timeout=None):
-    """Run git in the base. Returns (returncode, stdout, stderr), all stripped."""
+    """Run git in the base. Returns (returncode, stdout, stderr).
+
+    This file deliberately imports NOTHING from `tools/lib/` — the one deviation from the
+    single-git-helper rule, and it is the point rather than an oversight. `sync.py` is what a
+    session runs at its start and what saves unsent work at its end, and `tools/lib/` is exactly
+    what `--self-heal` exists to REPAIR (`SELF_HEAL_PATHS` in `update.py`). A rescue tool that
+    stops working when the machinery it might have to rescue is broken is not a rescue tool.
+    Stdlib only, and it stays that way.
+
+    stdout keeps its leading whitespace: porcelain status encodes state in columns 1-2.
+    """
     try:
         done = subprocess.run(
             ["git", "-C", str(BASE)] + list(args),
@@ -41,11 +54,11 @@ def git(*args, timeout=None):
         return 124, "", "timed out after %ss" % timeout
     except FileNotFoundError:
         raise GitError("git is not installed on this machine")
-    # stdout keeps its leading whitespace: porcelain status encodes state in columns 1-2.
     return done.returncode, done.stdout.rstrip("\n"), done.stderr.strip()
 
 
 def git_ok(*args, timeout=None):
+    """Output when git succeeded, else None. Only where empty and failed mean the same thing."""
     code, out, _ = git(*args, timeout=timeout)
     return out if code == 0 else None
 
@@ -66,28 +79,40 @@ def remote_is_public(url):
     return probe.returncode == 0 and probe.stdout.strip().lower() == "public"
 
 
+class BaseState:
+    """Everything the tools below decide from, with a name per fact.
+
+    It was a fourteen-key dict indexed by string literal in five consumers, so `state.detatched`
+    was a runtime KeyError and a key nobody set read as absent. Stdlib only, like the rest of this
+    file — a plain class rather than a dataclass, because the defaults are the contract and
+    writing them once here is what makes every consumer honest.
+    """
+
+    def __init__(self, base):
+        self.base = str(base)
+        self.is_repo = False
+        self.enclosing = None        # another repository this base sits inside
+        self.unreadable = None       # git could not report; NOT the same as "clean"
+        self.branch = None
+        self.detached = False
+        self.branches = 1
+        self.remote_url = None
+        self.remote_public = False
+        self.upstream = None
+        self.untracked_branch = None  # what we compared against when tracking is unset
+        self.unsaved = []
+        self.ahead = 0
+        self.behind = 0
+        self.offline = False
+        self.identity = True
+        self.nested_repos = []
+
+
 def read_state():
     """Everything the caller needs to decide, gathered in one place."""
-    state = {
-        "base": str(BASE),
-        "is_repo": git_ok("rev-parse", "--is-inside-work-tree") == "true",
-        "enclosing": None,
-        "nested_repos": [],
-        "remote_public": False,
-        "untracked_branch": None,
-        "branch": None,
-        "remote_url": None,
-        "upstream": None,
-        "unsaved": [],
-        "ahead": 0,
-        "behind": 0,
-        "offline": False,
-        "identity": True,
-        "detached": False,
-        "branches": 1,
-        "unreadable": None,
-    }
-    if not state["is_repo"]:
+    state = BaseState(BASE)
+    state.is_repo = git_ok("rev-parse", "--is-inside-work-tree") == "true"
+    if not state.is_repo:
         return state
 
     # Being INSIDE a repository is not the same as BEING one. A base with no `.git` of its own,
@@ -97,27 +122,27 @@ def read_state():
     # the one the person expects.
     toplevel = git_ok("rev-parse", "--show-toplevel")
     if toplevel and Path(toplevel).resolve() != BASE.resolve():
-        state["enclosing"] = toplevel
+        state.enclosing = toplevel
         return state
 
     branch = git_ok("rev-parse", "--abbrev-ref", "HEAD")
-    state["detached"] = branch == "HEAD"
-    state["branch"] = None if state["detached"] else branch
-    state["remote_url"] = git_ok("remote", "get-url", "origin")
-    state["upstream"] = git_ok("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
-    state["identity"] = bool(git_ok("config", "user.email")) and bool(git_ok("config", "user.name"))
+    state.detached = branch == "HEAD"
+    state.branch = None if state.detached else branch
+    state.remote_url = git_ok("remote", "get-url", "origin")
+    state.upstream = git_ok("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+    state.identity = bool(git_ok("config", "user.email")) and bool(git_ok("config", "user.name"))
 
     listing = git_ok("for-each-ref", "--format=%(refname:short)", "refs/heads/") or ""
-    state["branches"] = len([line for line in listing.splitlines() if line.strip()])
+    state.branches = len([line for line in listing.splitlines() if line.strip()])
 
     code, porcelain, err = git("status", "--porcelain")
     if code != 0:
         # A failed `status` used to read as a CLEAN base: `git_ok` returns None for both, and
         # `or ""` then made "cannot tell" indistinguishable from "nothing to save". The
         # session-start path would go on to fast-forward on that reading.
-        state["unreadable"] = err.strip() or "git could not read this base"
+        state.unreadable = err.strip() or "git could not read this base"
         return state
-    state["unsaved"] = [line[3:] for line in porcelain.splitlines() if line]
+    state.unsaved = [line[3:] for line in porcelain.splitlines() if line]
 
     # A project that is its own repository is committed as a gitlink: the base records a commit
     # id and none of the content, so a clone — the phone — gets an empty directory. Nothing about
@@ -126,12 +151,12 @@ def read_state():
     # already configured, or one whose repository is a fork of a public one (a fork is always
     # public), pushes the person's whole life somewhere anyone can read — while every check in
     # the kit reports a private place online, on the sole evidence that a URL exists.
-    if state["remote_url"]:
-        state["remote_public"] = remote_is_public(state["remote_url"])
+    if state.remote_url:
+        state.remote_public = remote_is_public(state.remote_url)
 
     projects = BASE / "projects"
     if projects.is_dir():
-        state["nested_repos"] = sorted(
+        state.nested_repos = sorted(
             "projects/%s" % child.name for child in projects.iterdir()
             if child.is_dir() and (child / ".git").exists())
     return state
@@ -139,144 +164,144 @@ def read_state():
 
 def refresh_remote_counts(state):
     """Fetch, then fill in how far apart the two sides are. Offline is a state, not a failure."""
-    if not state["remote_url"]:
+    if not state.remote_url:
         return
     code, _, _ = git("fetch", "--quiet", "origin", timeout=NETWORK_TIMEOUT_SECONDS)
     if code != 0:
-        state["offline"] = True
+        state.offline = True
         return
-    state["upstream"] = git_ok("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+    state.upstream = git_ok("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
     # A branch with no tracking configured used to leave both counters at zero, so `status`,
     # `session-start` and `pull` all reported "in step" while the remote was genuinely ahead —
     # and a read-only session never self-corrects, because nothing pushes to be refused. The
     # same-named remote branch answers the question perfectly well.
-    reference = state["upstream"]
-    if not reference and state["branch"]:
-        candidate = "origin/%s" % state["branch"]
+    reference = state.upstream
+    if not reference and state.branch:
+        candidate = "origin/%s" % state.branch
         if git_ok("rev-parse", "--verify", "--quiet", candidate):
             reference = candidate
-            state["untracked_branch"] = candidate
+            state.untracked_branch = candidate
     if not reference:
         return
     counts = git_ok("rev-list", "--left-right", "--count", "%s...HEAD" % reference)
     if counts:
         behind, ahead = counts.split()
-        state["behind"], state["ahead"] = int(behind), int(ahead)
+        state.behind, state.ahead = int(behind), int(ahead)
 
 
 def describe(state, action_taken, directive):
-    lines = ["%s base: %s" % (PREFIX, state["base"])]
-    if not state["is_repo"]:
+    lines = ["%s base: %s" % (PREFIX, state.base)]
+    if not state.is_repo:
         lines.append("state: this folder is not tracked at all — nothing can travel between surfaces")
-        lines.append("YOU MUST: %s" % directive)
+        lines.append(DIRECTIVE + " %s" % directive)
         return "\n".join(lines)
 
-    if state["unreadable"]:
+    if state.unreadable:
         lines.append("state: UNREADABLE — git could not report on this base")
-        lines.append("       %s" % state["unreadable"])
-        lines.append("YOU MUST: %s" % directive)
+        lines.append("       %s" % state.unreadable)
+        lines.append(DIRECTIVE + " %s" % directive)
         return "\n".join(lines)
 
-    if state["enclosing"]:
+    if state.enclosing:
         lines.append("state: NOT ITS OWN — this base has no history of its own and sits inside")
-        lines.append("       %s" % state["enclosing"])
+        lines.append("       %s" % state.enclosing)
         lines.append("       Saving here would write into that project and send it wherever it goes.")
-        lines.append("YOU MUST: %s" % directive)
+        lines.append(DIRECTIVE + " %s" % directive)
         return "\n".join(lines)
 
-    lines.append("branch: %s" % (state["branch"] or "DETACHED — not on a branch"))
-    if state["remote_url"]:
-        lines.append("remote: %s" % state["remote_url"])
+    lines.append("branch: %s" % (state.branch or "DETACHED — not on a branch"))
+    if state.remote_url:
+        lines.append("remote: %s" % state.remote_url)
     else:
         lines.append("remote: NONE — this base exists on this machine only")
 
-    if state["unsaved"]:
-        sample = ", ".join(state["unsaved"][:UNSAVED_SAMPLE_SIZE])
-        more = "" if len(state["unsaved"]) <= UNSAVED_SAMPLE_SIZE else ", +%d more" % (
-            len(state["unsaved"]) - UNSAVED_SAMPLE_SIZE)
-        lines.append("unsaved here: %d (%s%s)" % (len(state["unsaved"]), sample, more))
+    if state.unsaved:
+        sample = ", ".join(state.unsaved[:UNSAVED_SAMPLE_SIZE])
+        more = "" if len(state.unsaved) <= UNSAVED_SAMPLE_SIZE else ", +%d more" % (
+            len(state.unsaved) - UNSAVED_SAMPLE_SIZE)
+        lines.append("unsaved here: %d (%s%s)" % (len(state.unsaved), sample, more))
     else:
         lines.append("unsaved here: none")
 
-    if state["offline"]:
+    if state.offline:
         lines.append("sync: could not reach the remote (offline or no access)")
-    elif not state["upstream"] and not state["untracked_branch"]:
+    elif not state.upstream and not state.untracked_branch:
         lines.append("sync: this branch is not linked to the remote yet")
-    elif state["ahead"] and state["behind"]:
-        lines.append("sync: both sides moved (%d here, %d elsewhere)" % (state["ahead"], state["behind"]))
-    elif state["behind"]:
-        lines.append("sync: %d change(s) elsewhere are not here yet" % state["behind"])
-    elif state["ahead"]:
-        lines.append("sync: %d change(s) here have not gone out yet" % state["ahead"])
+    elif state.ahead and state.behind:
+        lines.append("sync: both sides moved (%d here, %d elsewhere)" % (state.ahead, state.behind))
+    elif state.behind:
+        lines.append("sync: %d change(s) elsewhere are not here yet" % state.behind)
+    elif state.ahead:
+        lines.append("sync: %d change(s) here have not gone out yet" % state.ahead)
     else:
         lines.append("sync: in step with the remote")
 
-    if state["untracked_branch"]:
+    if state.untracked_branch:
         lines.append("note: this branch is not linked to the remote, so the comparison is "
-                     "against %s" % state["untracked_branch"])
-    if state["remote_public"]:
+                     "against %s" % state.untracked_branch)
+    if state.remote_public:
         lines.append("       ^ PUBLIC — anyone can read everything saved here")
-    if state["nested_repos"]:
-        lines.append("projects kept separately: %s" % ", ".join(state["nested_repos"]))
+    if state.nested_repos:
+        lines.append("projects kept separately: %s" % ", ".join(state.nested_repos))
         lines.append("       their contents do NOT travel with this base — a clone gets an "
                      "empty folder")
-    if state["branches"] > 1:
+    if state.branches > 1:
         lines.append("branches: %d — a base has one; the extra ones are invisible on a phone"
-                     % state["branches"])
-    if not state["identity"]:
+                     % state.branches)
+    if not state.identity:
         lines.append("identity: git has no name/email set — saving will fail until it does")
     if action_taken:
         lines.append("action taken: %s" % action_taken)
-    lines.append("YOU MUST: %s" % directive)
+    lines.append(DIRECTIVE + " %s" % directive)
     return "\n".join(lines)
 
 
 def directive_for(state):
     """The next action rules/device-sync.md requires for this state."""
-    if not state["is_repo"]:
+    if not state.is_repo:
         return ("tell the person their base is not being kept anywhere and offer to set that up "
                 "(plain language — no git words)")
-    if state["unreadable"]:
+    if state.unreadable:
         return ("STOP — do not save or pull. git cannot read this base, so nothing here can be "
                 "trusted, and an empty answer would read as 'nothing to save'. Show the person "
                 "the reason above in their words and fix it before anything else")
-    if state["enclosing"]:
+    if state.enclosing:
         return ("STOP — do not save. This base has no history of its own and sits inside another "
                 "project's, so everything here would be saved into THAT project and sent wherever "
                 "it goes. Tell the person their base was never set up as its own thing, in their "
                 "words, and set it up before saving anything")
-    if state["detached"]:
+    if state.detached:
         return "put the base back on its single branch before doing anything else"
-    if not state["remote_url"]:
+    if not state.remote_url:
         return ("tell the person their base lives only on this machine, so their phone and other "
                 "computers cannot see any of it, and offer to fix that")
-    if not state["identity"]:
+    if not state.identity:
         return ("this base has no name to save under, so nothing can be recorded. If the person "
                 "is there, ask for a name and email; if nobody is — an unattended run — take "
                 "them from profile.md or the environment and set them yourself rather than "
                 "waiting (rules/device-sync.md: with nobody to ask you decide)")
-    if state["untracked_branch"] and (state["ahead"] or state["behind"]):
+    if state.untracked_branch and (state.ahead or state.behind):
         return ("the base is out of step AND this branch is not linked to the remote, so nothing "
                 "will notice on its own next time. Link it (git branch --set-upstream-to=%s), "
                 "then run 'pull' — and say to the person only what changed, never the mechanics"
-                % state["untracked_branch"])
-    if state["unsaved"] and state["behind"]:
+                % state.untracked_branch)
+    if state.unsaved and state.behind:
         return ("do NOT pull. Say what is unsaved here, propose saving it first, then bring the "
                 "rest in")
-    if state["ahead"] and state["behind"]:
+    if state.ahead and state.behind:
         return "run 'pull' to put both sides together, resolve anything overlapping by reading it"
-    if state["behind"]:
+    if state.behind:
         return "run 'pull' to bring the base up to date, then say nothing about it"
-    if state["remote_public"]:
+    if state.remote_public:
         return ("STOP — do not save. The one place this base lives online is PUBLIC, so "
                 "everything in it is readable by anyone. Tell the person plainly, in their "
                 "words, and make it private before anything else is sent out")
-    if state["nested_repos"]:
+    if state.nested_repos:
         return ("save as normal, then tell the person once, in their words, that what is inside "
                 "%s is kept on its own and does not travel with the base — so it will not be on "
                 "their phone. Offer to set that up separately"
-                % ", ".join(state["nested_repos"]))
-    if state["unsaved"] or state["ahead"]:
+                % ", ".join(state.nested_repos))
+    if state.unsaved or state.ahead:
         return ("propose saving at the end of this chunk of work — earlier if this copy will not "
                 "survive the session")
     return "nothing — the base is in step; say nothing about it"
@@ -284,18 +309,18 @@ def directive_for(state):
 
 def mode_status(mutate_when_safe):
     state = read_state()
-    if not state["is_repo"]:
+    if not state.is_repo:
         print(describe(state, None, directive_for(state)))
         return 0
     refresh_remote_counts(state)
 
     action = None
-    if (mutate_when_safe and not state["unsaved"] and state["behind"] and not state["ahead"]
-            and state["upstream"] and not state["offline"]):
+    if (mutate_when_safe and not state.unsaved and state.behind and not state.ahead
+            and state.upstream and not state.offline):
         code, _, err = git("merge", "--ff-only", "@{u}", timeout=NETWORK_TIMEOUT_SECONDS)
         if code == 0:
-            action = "brought the base up to date (%d change(s))" % state["behind"]
-            state["behind"] = 0
+            action = "brought the base up to date (%d change(s))" % state.behind
+            state.behind = 0
         else:
             action = "could not bring the base up to date: %s" % err
     print(describe(state, action, directive_for(state)))
@@ -304,19 +329,19 @@ def mode_status(mutate_when_safe):
 
 def mode_pull():
     state = read_state()
-    if state["unreadable"] or state["enclosing"] or not state["is_repo"] or not state["remote_url"]:
+    if state.unreadable or state.enclosing or not state.is_repo or not state.remote_url:
         print(describe(state, None, directive_for(state)))
         return 1
-    if state["unsaved"]:
+    if state.unsaved:
         print(describe(state, None,
                        "do NOT pull — there is unsaved work here. Propose saving it first."))
         return 1
 
     refresh_remote_counts(state)
-    if state["offline"]:
+    if state.offline:
         print(describe(state, None, "tell the person you could not reach their saved copy right now"))
         return 1
-    if not state["behind"]:
+    if not state.behind:
         print(describe(state, "nothing to bring in", directive_for(state)))
         return 0
 
@@ -330,14 +355,14 @@ def mode_pull():
             # is refused and named instead.
             print("%s this machine holds a DIFFERENT base from the one saved online — they share "
                   "no history at all." % PREFIX)
-            print("YOU MUST: tell the person, in their words, that this computer was set up as a "
+            print(DIRECTIVE + " tell the person, in their words, that this computer was set up as a "
                   "new base rather than as a copy of theirs, so the two are not the same thing. "
                   "Offer to start this machine again from their saved one. Never merge them "
                   "blindly and never force.")
             return 1
         conflicts = git_ok("diff", "--name-only", "--diff-filter=U") or err
         print("%s overlapping changes in:\n%s" % (PREFIX, conflicts))
-        print("YOU MUST: resolve these by reading what they mean, then save. Never discard a side, "
+        print(DIRECTIVE + " resolve these by reading what they mean, then save. Never discard a side, "
               "never force.")
         return 1
 
@@ -370,15 +395,15 @@ def mode_save(message):
     state = read_state()
     # Refuse before anything is staged: `git add -A` here would stage the enclosing repository's
     # whole worktree, and the push that follows would send it wherever that repository goes.
-    if (state["unreadable"] or state["enclosing"] or state["remote_public"]
-            or not state["is_repo"]):
+    if (state.unreadable or state.enclosing or state.remote_public
+            or not state.is_repo):
         print(describe(state, None, directive_for(state)))
         return 1
-    if not state["identity"]:
+    if not state.identity:
         print(describe(state, None, directive_for(state)))
         return 1
 
-    if state["unsaved"]:
+    if state.unsaved:
         code, _, err = git("add", "-A")
         if code != 0:
             print("%s could not stage: %s" % (PREFIX, err))
@@ -391,27 +416,27 @@ def mode_save(message):
             return 1
         print("%s recorded %d file(s)" % (PREFIX, count))
 
-    if not state["remote_url"]:
+    if not state.remote_url:
         print(describe(read_state(), "recorded on this machine", directive_for(read_state())))
         return 0
 
     state = read_state()
     refresh_remote_counts(state)
-    if state["offline"]:
+    if state.offline:
         print(describe(state, "recorded on this machine; could not send it out",
                        "tell the person it is safe here but has not reached their other devices yet"))
         return 1
-    if state["behind"] and mode_pull() != 0:
+    if state.behind and mode_pull() != 0:
         return 1
 
     args = ["push"]
-    if not read_state()["upstream"]:
-        branch = read_state()["branch"]
+    if not read_state().upstream:
+        branch = read_state().branch
         args += ["--set-upstream", "origin", branch]
     code, _, err = git(*args, timeout=NETWORK_TIMEOUT_SECONDS)
     if code != 0:
         print("%s could not send it out: %s" % (PREFIX, err))
-        print("YOU MUST: %s" % push_refusal_directive(err))
+        print(DIRECTIVE + " %s" % push_refusal_directive(err))
         return 1
 
     final = read_state()
@@ -431,14 +456,14 @@ def mode_session_end():
     It is not a substitute for saving as you go. It is the floor under it.
     """
     state = read_state()
-    if state["unreadable"] or state["enclosing"] or not state["is_repo"]:
+    if state.unreadable or state.enclosing or not state.is_repo:
         return 0            # a state with its own directive; the session is over, say nothing
-    if not state["unsaved"] and not state["ahead"]:
+    if not state.unsaved and not state.ahead:
         return 0            # nothing to rescue
-    if not state["identity"] or not state["remote_url"]:
+    if not state.identity or not state.remote_url:
         print("%s this session is ending with work that was never sent out, and it cannot be "
               "sent from here." % PREFIX)
-        print("YOU MUST: if the person is still there, tell them plainly that what was done in "
+        print(DIRECTIVE + " if the person is still there, tell them plainly that what was done in "
               "this session stays on this machine only.")
         return 0
     return mode_save("Save work from a session that was ending")

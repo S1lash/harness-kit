@@ -23,6 +23,7 @@ from pathlib import Path
 KIT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(KIT_ROOT / "tools"))
 
+from lib import gitrun  # noqa: E402
 from lib import manifest as manifest_lib  # noqa: E402
 from lib import migrate as migrate_lib  # noqa: E402
 from lib import portability  # noqa: E402
@@ -470,6 +471,46 @@ class EnclosingRepositoryTests(unittest.TestCase):
         self.assertIn("no history of its own", done.stdout + done.stderr)
 
 
+class GitHelperTests(unittest.TestCase):
+    """The contract every tool but `sync.py` now shares, pinned so it cannot drift back."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        git(self.root, "init", "-q", "-b", "main")
+
+    def test_leading_whitespace_survives(self):
+        """Porcelain encodes state in columns 1 and 2.
+
+        Stripping stdout once cost every path in a report its first character. `sync.py` reads
+        porcelain today and does not use this helper, so nothing would notice the regression —
+        which is exactly why the contract is pinned here rather than left to a caller.
+        """
+        write(self.root, "tracked.md", "one\n")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "one")
+        write(self.root, "tracked.md", "two\n")
+        result = gitrun.run(self.root, "status", "--porcelain")
+        self.assertTrue(result.out.startswith(" M "), repr(result.out))
+
+    def test_a_failure_is_a_result_not_an_exception(self):
+        result = gitrun.run(self.root, "rev-parse", "--verify", "does-not-exist")
+        self.assertTrue(result.failed)
+        self.assertTrue(result.err, "stderr was discarded — the reason is the useful half")
+        self.assertIsNone(gitrun.ok(self.root, "rev-parse", "--verify", "does-not-exist"))
+
+    def test_missing_git_is_named_rather_than_traced(self):
+        # A machine without git cannot be simulated by running git, so the call is replaced.
+        def absent(*args, **kwargs):
+            raise FileNotFoundError("git")
+        real = gitrun.subprocess.run
+        gitrun.subprocess.run = absent
+        self.addCleanup(setattr, gitrun.subprocess, "run", real)
+        with self.assertRaises(gitrun.GitMissing):
+            gitrun.run(self.root, "status")
+
+
 class ContainmentTests(unittest.TestCase):
     """A manifest entry becomes a filesystem operation, so containment is the manifest's job.
 
@@ -894,6 +935,29 @@ class UpdateEndToEndTests(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertTrue((self.base / "knowledge" / "pointers" / "stack.md").exists())
 
+    def test_a_directory_the_release_adds_to_engine_is_matched_however_it_is_written(self):
+        """`engine:` entries are compared against paths, so the trailing slash has to come off.
+
+        The incoming list is read separately from the local one, and only the local reader
+        stripped it — so a release adding `doctrine/` rather than `doctrine` would have been
+        compared as a path that does not exist and quietly counted as absent.
+        """
+        widened = MANIFEST.replace("  - rules/", "  - rules/\n  - extra/")
+        write(self.kit, ".engine-manifest.yml", widened)
+        write(self.kit, "extra/note.md", "a directory this release introduces\n")
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "widen engine with a directory")
+
+        done = run_update(self.base)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertTrue((self.base / "extra" / "note.md").exists(),
+                        "a directory added to engine: this release did not land")
+        # And a path the base ALREADY had must not be reported as newly introduced: the two
+        # lists are read by different code paths, and only one of them stripped the slash, so
+        # `rules/` and `rules` compared as different entries.
+        self.assertNotIn("rules (a kit path this release introduced)", done.stdout)
+        self.assertIn("extra (a kit path this release introduced)", done.stdout)
+
     def test_a_seed_this_release_introduces_lands_in_the_run_that_ships_it(self):
         """The asymmetry that hid this: the same case for `engine:` was tested and this was not.
 
@@ -1247,6 +1311,21 @@ class DivergenceAndOutageTests(unittest.TestCase):
         landed = git(self.remote, "ls-tree", "-r", "--name-only", "main").stdout
         self.assertIn("on-the-laptop.md", landed)
         self.assertIn("on-the-phone.md", landed)
+
+    def test_sync_depends_on_nothing_but_the_standard_library(self):
+        """The one tool that must work when the machinery around it does not.
+
+        `sync.py` runs at every session start and saves unsent work at every announced end, and
+        `tools/lib/` is precisely what `--self-heal` exists to repair. Importing from it would
+        make the rescue tool fail in the situation it exists for. I tried consolidating the three
+        git helpers into one library and this is why only two of them moved.
+        """
+        source = (KIT_ROOT / "tools" / "sync.py").read_text(encoding="utf-8")
+        self.assertNotIn("from lib import", source)
+        self.assertNotIn("import lib", source)
+        for module in re.findall(r"^import (\w+)", source, re.M):
+            self.assertIn(module, ("subprocess", "sys", "os", "json", "time", "re"),
+                          "%s is not stdlib — sync.py must run with nothing installed" % module)
 
     def test_no_force_or_rebase_is_ever_issued(self):
         # Every python tool that touches git, not just this one: the invariant is about what the
