@@ -2491,13 +2491,18 @@ class PortabilityGateTests(TempCase):
                              "engine: %r declared=%s" % (body, not expect_failure))
 
     def test_the_manifests_own_version_is_a_third_mirror_and_is_held_to_it(self):
-        # It drifted freely while the doctrine, the doctor's list and the manifest's own header
-        # all promised it was checked against the other two.
+        # The doctrine, the doctor's list and the manifest's own header all promise this number
+        # is held to the other two. The current version is asked of the manifest rather than
+        # written here: a literal copy of a value the code owns turns every release into a
+        # failing test (rules/self-learning.md — the snapshot filter).
         fake = Path(self.tmp.name) / "drifted"
         shutil.copytree(KIT_ROOT, fake, ignore=shutil.ignore_patterns(".git", "__pycache__"))
         manifest = fake / ".engine-manifest.yml"
+        declared = manifest_lib.read_version(fake)
+        self.assertTrue(declared, "the manifest declares no version to drift from")
         manifest.write_text(manifest.read_text(encoding="utf-8")
-                            .replace("version: 0.2.0", "version: 9.9.9", 1), encoding="utf-8")
+                            .replace("version: %s" % declared, "version: 9.9.9", 1),
+                            encoding="utf-8")
         found = kitchecks.Report()
         kitchecks.check_versions(fake, found)
         self.assertIn("says version '9.9.9'", found)

@@ -4,6 +4,11 @@ The sanctioned history home for this repo (the one place `present-not-history` a
 change — like `knowledge/decisions.md` for decisions). The canon itself always describes the
 present; evolution is logged here.
 
+## 2026-08-31 — 0.2.2
+
+- The manifest-version test asked the manifest for the current number instead of carrying a copy
+  of it. A literal copy of a value the code owns turns every release into a failing test.
+
 ## 2026-08-31 — 0.2.1
 
 - `KNOWN-LIMITS.md` states the Windows evidence as what stands behind `install.ps1` today, not as

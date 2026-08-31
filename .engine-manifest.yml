@@ -52,7 +52,7 @@
 #     verifies; all three move in the same edit, and the release gate refuses a
 #     release where any of them disagrees.
 
-version: 0.2.1
+version: 0.2.2
 
 # Where the kit itself lives. A base reaches it through a remote named `harness-kit`, and that
 # remote is git config — it does not survive a clone. A second device, or a phone that has only
