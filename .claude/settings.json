@@ -28,6 +28,23 @@
                     }
                 ]
             }
+        ],
+        "SessionEnd": [
+            {
+                "matcher": "clear|logout|prompt_input_exit|other",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "python3",
+                        "args": [
+                            "${CLAUDE_PROJECT_DIR}/tools/sync.py",
+                            "session-end"
+                        ],
+                        "timeout": 60,
+                        "statusMessage": "Saving anything this session has not sent out"
+                    }
+                ]
+            }
         ]
     }
 }

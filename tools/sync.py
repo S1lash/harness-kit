@@ -12,6 +12,8 @@ Modes
   status          Print the state. Changes nothing.
   pull            Explicit sync-in, including a merge when both sides moved.
   save "<why>"    Stage everything, record it, sync, and send it out.
+  session-end     Last chance on a surface about to disappear. Silent when there is nothing to
+                  save; always exits 0 so an ending session never fails because of it.
 """
 
 import subprocess
@@ -414,6 +416,31 @@ def mode_save(message):
     return 0
 
 
+def mode_session_end():
+    """Last chance on a surface that is about to disappear. Silent when there is nothing to do.
+
+    No hook is guaranteed to run before an ephemeral working copy is reclaimed — this one catches
+    the endings that ARE announced (a closed session, `/clear`, a sign-out) and nothing else. On a
+    surface whose copy does not survive, work that was never sent out is simply gone, so this
+    saves rather than proposing: by the time a session is ending there is nobody left to ask, and
+    `rules/device-sync.md` says that is when you act on your own authority.
+
+    It is not a substitute for saving as you go. It is the floor under it.
+    """
+    state = read_state()
+    if state["unreadable"] or state["enclosing"] or not state["is_repo"]:
+        return 0            # a state with its own directive; the session is over, say nothing
+    if not state["unsaved"] and not state["ahead"]:
+        return 0            # nothing to rescue
+    if not state["identity"] or not state["remote_url"]:
+        print("%s this session is ending with work that was never sent out, and it cannot be "
+              "sent from here." % PREFIX)
+        print("YOU MUST: if the person is still there, tell them plainly that what was done in "
+              "this session stays on this machine only.")
+        return 0
+    return mode_save("Save work from a session that was ending")
+
+
 def main(argv):
     mode = argv[1] if len(argv) > 1 else "status"
     try:
@@ -423,6 +450,8 @@ def main(argv):
             return mode_status(mutate_when_safe=False)
         if mode == "pull":
             return mode_pull()
+        if mode == "session-end":
+            return mode_session_end()
         if mode == "save":
             if len(argv) < 3 or not argv[2].strip():
                 print("%s save needs a message saying WHY this change exists" % PREFIX)
@@ -430,7 +459,7 @@ def main(argv):
             return mode_save(argv[2])
     except GitError as exc:
         print("%s %s" % (PREFIX, exc))
-        return 0 if mode == "session-start" else 1
+        return 0 if mode in ("session-start", "session-end") else 1
 
     print(__doc__)
     return 2
