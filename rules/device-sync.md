@@ -86,7 +86,11 @@ save it there and it appears here", plus doing it for them when you are on that 
 ## Mechanism
 
 `tools/sync.py` holds the mechanics (what state the base is in, and the safe action for that state);
-this rule holds the judgement. On Claude Code a `SessionStart` hook runs the sync-in step for you.
+this rule holds the judgement. On Claude Code a `SessionStart` hook runs the sync-in step and a
+`SessionEnd` hook saves whatever is still unsent when a session closes. **That hook is a floor,
+not a plan.** It catches only endings a session announces — closed, cleared, signed out — and no
+hook is guaranteed to run before an ephemeral copy is reclaimed. On a surface whose copy does not
+survive, saving as you go is the thing that works, and this rule still says to propose it early.
 A runtime without hooks, or a machine where the hook cannot run, changes nothing about the
 contract — you do it yourself, in the same order.
 

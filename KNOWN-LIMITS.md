@@ -47,6 +47,13 @@
   `git checkout harness-kit/main -- tools/update.py tools/lib .engine-manifest.yml`. An agent
   present in the session runs it; the boundary is stated here because nothing in the traceback
   says which side of it you are on.
+- **Nothing can guarantee a save before an ephemeral session is reclaimed.** A `SessionEnd` hook
+  now saves whatever is still unsent, which covers the endings a session announces — closed,
+  cleared, signed out. A container reclaimed on inactivity, a dropped connection, a crashed tab
+  announce nothing, and no hook fires there; the documented budget for `SessionEnd` starts at 1.5
+  seconds. So the rule carries the weight it always did: on a surface whose copy does not survive,
+  save as you go rather than at the end. The hook is the floor under that habit, not a replacement
+  for it — and in a runtime with no hooks at all, it is only the habit.
 - **Two capabilities exist for Claude Code and for nobody else.** The session-start catch-up and
   the daily update check are `.claude/settings.json` hooks; the six `/harness-*` procedures are
   commands only there. `rules/multi-agent.md` now tells every other runtime to run the two scripts

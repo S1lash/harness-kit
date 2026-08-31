@@ -154,6 +154,45 @@ class SilentDivergenceTests(unittest.TestCase):
         done = self.run_sync("status")
         self.assertNotIn("projects kept separately", done.stdout)
 
+    def test_a_session_that_ends_with_unsaved_work_saves_it(self):
+        """The half of the culture that had no mechanism at all.
+
+        Sync-in was automatic from the first day; save-out was rule-only, so the case the whole
+        design exists for — work done on a phone, session evaporates — rested entirely on the
+        agent remembering. This is the floor under that, not a replacement for it.
+        """
+        remote = Path(self.tmp.name) / "end.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(remote), "symbolic-ref", "HEAD", "refs/heads/main"],
+                       check=True)
+        write(self.base, "seed.md", "x\n")
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "start")
+        git(self.base, "remote", "add", "origin", str(remote))
+        git(self.base, "push", "-q", "-u", "origin", "main")
+
+        write(self.base, "knowledge/from-the-phone.md", "what we worked out\n")
+        done = self.run_sync("session-end")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+
+        elsewhere = Path(self.tmp.name) / "elsewhere"
+        subprocess.run(["git", "clone", "-q", str(remote), str(elsewhere)], check=True)
+        self.assertTrue((elsewhere / "knowledge" / "from-the-phone.md").exists(),
+                        "the session ended and the work never left the machine")
+
+    def test_a_session_that_ends_with_nothing_to_save_says_nothing(self):
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "everything recorded")
+        done = self.run_sync("session-end")
+        self.assertEqual(done.returncode, 0)
+        self.assertEqual(done.stdout.strip(), "", "it spoke when there was nothing to say")
+
+    def test_a_session_ending_with_nowhere_to_send_says_what_is_lost(self):
+        write(self.base, "knowledge/only-here.md", "theirs\n")
+        done = self.run_sync("session-end")
+        self.assertEqual(done.returncode, 0)
+        self.assertIn("stays on this machine only", done.stdout)
+
     def test_a_branch_with_no_tracking_still_notices_the_remote_moved(self):
         """The base reported "in step" while the remote was genuinely ahead.
 

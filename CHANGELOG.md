@@ -41,6 +41,11 @@ The platform layer: the cross-platform rule stops depending on somebody remember
   been developed past the kit's, keeping the machinery so that adopting a path later is a decision
   rather than a rebuild. Refusing it every session teaches its owner to ignore the one message
   that would matter if the file really were damaged.
+- The save-out half of the git culture has a mechanism at last. Sync-in was automatic from the
+  first day and saving was rule-only, so the case the whole design exists for — work done on a
+  phone, session evaporates — rested entirely on the agent remembering. A `SessionEnd` hook now
+  saves whatever is still unsent. It is a floor, not a plan: no hook is guaranteed to run before
+  an ephemeral copy is reclaimed, which is why the rule still says to save as you go.
 - **An update no longer destroys unsaved work at a path the release newly claims.** The dirty
   guard ran over the paths the LOCAL manifest called the kit's, so a path this release adds to
   `engine:` was replaced without ever being guarded — exit 0, no warning, unrecoverable. Those are

@@ -31,9 +31,10 @@ relevant flow fixes what it surfaces.
 5. **The machinery still works.** `python3 -m unittest discover -s tools/tests` passes. A failure
    here is a FAIL naming the test: something in this base's own tooling is broken, and it will
    surface as a lost save or a silently empty update rather than as an error.
-6. **Sessions catch up on their own.** `.claude/settings.json` runs `tools/sync.py` at session
-   start, and `python3` is available to run it. Missing either is a WARN, not a FAIL — the canon
-   still requires you to do it by hand.
+6. **Sessions catch up on their own, and an ending session saves.** `.claude/settings.json` runs
+   `tools/sync.py session-start` at session start and `session-end` when one closes, and `python3`
+   is available to run both. Missing either is a WARN, not a FAIL — the canon still requires you
+   to do it by hand, and the end-of-session hook was never a guarantee (`KNOWN-LIMITS.md`).
 7. **Every project has a contract.** Each directory under `projects/` has `AGENTS.md`, a
    `CLAUDE.md` importing it, and its own `.claude/`. A project without one is a WARN naming it —
    the next session that opens it starts blind (`doctrine/project-home.md`). Each is also a row in
