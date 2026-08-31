@@ -323,6 +323,20 @@ class InstallerSafetyTests(unittest.TestCase):
         self.assertTrue((legacy / "old-work.md").exists(),
                         "an empty answer moved the folder — the default is not no")
 
+    def test_wiring_codex_is_verified_the_way_wiring_claude_is(self):
+        """Asserting the check EXISTS is not asserting it runs.
+
+        Claude's block was verified after install and Codex's was not, so a Codex user could
+        finish an install believing their runtime was set up when nothing had confirmed it.
+        """
+        done = self.install("%s\nharness\nEnglish\ny\ny\nn\nn\nElena\ne@example.invalid\nn\n"
+                            % self.home)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Codex global wiring", done.stdout,
+                      "Codex was wired and never checked")
+        self.assertIn("Claude Code global wiring", done.stdout)
+        self.assertTrue((self.home / ".codex" / "AGENTS.md").exists())
+
     def test_an_ordinary_install_records_the_base(self):
         done = self.install("%s\nharness\nEnglish\nn\nn\nn\nn\nElena\ne@example.invalid\nn\n"
                             % self.home)
@@ -2155,6 +2169,34 @@ class WindowsInstallerTests(unittest.TestCase):
                          "Move it inside the base?", "Set that up now?", "Your name", "Your email"):
             self.assertIn(question, shell, "install.sh lost: %s" % question)
             self.assertIn(question, self.text, "install.ps1 lost: %s" % question)
+
+    def test_every_runtime_the_installer_wires_is_also_verified(self):
+        """Writing an entry and never checking it is how a runtime looks set up and is not.
+
+        Claude Code's block was verified after install and Codex's was not, in both installers
+        identically — so it was an oversight rather than a platform difference.
+        """
+        shell = (KIT_ROOT / "install.sh").read_text(encoding="utf-8")
+        for runtime, entry in (("Claude Code", ".claude/CLAUDE.md"), ("Codex", ".codex/AGENTS.md")):
+            self.assertIn('check "%s global wiring"' % runtime, shell, runtime)
+            self.assertIn(entry, shell, entry)
+            self.assertIn('Check "%s global wiring"' % runtime, self.text, runtime)
+
+    def test_the_hot_canon_names_no_capability_only_one_runtime_has(self):
+        """A slash command in shared canon reads as available to a runtime that has no slashes."""
+        for name in sorted((KIT_ROOT / "rules").glob("*.md")):
+            body = name.read_text(encoding="utf-8")
+            # A slash command, not a path that merely contains the same letters — the canon is
+            # full of `rules/harness-stewardship.md`.
+            invocation = re.compile(r"(?<![\w/.])/harness-[a-z-]+")
+            # By paragraph, not by line: a wrapped sentence is one statement, and splitting it
+            # would fail on formatting rather than on meaning.
+            for block in re.split(r"\n\s*\n", body):
+                if not invocation.search(block) or block.lstrip().startswith(">"):
+                    continue
+                self.assertIn(".claude/commands/", block,
+                              "%s offers a slash command without naming the file behind it: %s"
+                              % (name.name, block.strip()[:100]))
 
     def test_both_doctors_check_the_same_things(self):
         shell = (KIT_ROOT / "install.sh").read_text(encoding="utf-8")

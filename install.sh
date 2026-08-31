@@ -310,7 +310,9 @@ if ask_yes "Do you use Claude Code?" "Y"; then
 fi
 
 # ---- Codex -----------------------------------------------------------------
+CODEX_WIRED=0
 if ask_yes "Do you use Codex (OpenAI Codex CLI)?" "N"; then
+  CODEX_WIRED=1
   CODEX_DIR="$HOME_DIR/.codex"
   mkdir -p "$CODEX_DIR"
   {
@@ -530,6 +532,16 @@ if [ "$CLAUDE_WIRED" -eq 1 ]; then
     check "Claude Code global wiring" 0
   else
     say "  MISS Claude Code global wiring"
+    DOC_OK=0
+  fi
+fi
+# The same check for the runtime that was wired a few lines later. Verifying one and not the
+# other is how a runtime ends up believing it is set up when nothing wrote its entry.
+if [ "${CODEX_WIRED:-0}" -eq 1 ]; then
+  if [ -f "$HOME_DIR/.codex/AGENTS.md" ] && grep -q "BEGIN HARNESS-KIT" "$HOME_DIR/.codex/AGENTS.md" 2>/dev/null; then
+    check "Codex global wiring" 0
+  else
+    say "  MISS Codex global wiring"
     DOC_OK=0
   fi
 fi

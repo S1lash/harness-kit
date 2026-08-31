@@ -46,7 +46,7 @@ rule cannot be in force for one runtime and absent for another:
 - **Verify, don't assume:** the file list in `rules/` and the list in `AGENTS.md` name the same
   set. A rule on disk that the list omits still binds — read it and repair the list in the same
   session. The list is an index, never the definition.
-  `python3 tools/check_kit.py` proves it; `/harness-doctor` reports it.
+  `python3 tools/check_kit.py` proves it, in any runtime; `.claude/commands/harness-doctor.md` is the procedure that reports it (a command in Claude Code, a file to follow elsewhere).
 
 ## Different capabilities, identical canon
 
@@ -60,6 +60,24 @@ knowledge written by one is read by the others.
 - **Read is almost never the constrained side.** Any runtime can read the base and answer from it;
   asymmetry usually lives in writing and in tooling. Don't decline to *look* something up because
   the current agent lacks a tool for *changing* it.
+- **What one runtime does automatically, the others do by hand — and the hand is yours.** Two
+  things are wired for Claude Code alone and for nobody else:
+  - **Catching the base up, and checking for a newer kit.** `.claude/settings.json` runs both at
+    session start. In any other runtime nothing does, so you run
+    `python3 tools/sync.py session-start` first thing and
+    `python3 tools/update.py --check` about once a day. Neither is optional: a base that never
+    catches up and a base that is current look identical from inside the session.
+  - **The slash commands.** `/harness-sync`, `/harness-update`, `/harness-doctor`,
+    `/harness-init`, `/harness-project-init`, `/harness-add-skill` are files under
+    `.claude/commands/`, and only Claude Code turns them into commands. Every one is a procedure
+    written in plain English — read the file and carry it out. The capability is the procedure,
+    not the slash.
+- **A repeatable procedure has one registration point today, and it is Claude's.**
+  `rules/harness-stewardship.md` tells every runtime to turn a recurring task into a skill, and
+  `doctrine/skill-creation.md` registers it at `.claude/skills/<name>/SKILL.md`, which only
+  Claude Code discovers. Write it there anyway — it is a readable procedure in every runtime and
+  the person's own capability home — and say once that it is invocable in Claude Code and a file
+  to follow elsewhere. Do not invent a parallel home for it: a second one is a second truth.
 
 Why: the person's leverage comes from one accumulating base, not from several agents each half-
 remembering. The moment memory or canon forks per runtime, the base stops being a source of truth and

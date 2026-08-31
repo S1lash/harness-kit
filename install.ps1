@@ -312,7 +312,9 @@ Converse in the language set in ``$Dest/profile.md``; code, comments, and identi
 }
 
 # ---- Codex -----------------------------------------------------------------
+$CodexWired = $false
 if (AskYes "Do you use Codex (OpenAI Codex CLI)?" "N") {
+  $CodexWired = $true
   $CodexDir = Join-Path $HomeDir ".codex"
   if (-not (Test-Path $CodexDir)) { New-Item -ItemType Directory -Path $CodexDir -Force | Out-Null }
   $block = @"
@@ -535,6 +537,16 @@ if ($ClaudeWired) {
     Check "Claude Code global wiring" $true
   } else {
     Check "Claude Code global wiring" $false
+  }
+}
+# The same check for the runtime wired a few lines later; verifying one and not the other is how
+# a runtime ends up believing it is set up when nothing wrote its entry.
+if ($CodexWired) {
+  $gcx = Join-Path $HomeDir ".codex/AGENTS.md"
+  if ((Test-Path $gcx) -and ((Get-Content -Raw -Encoding UTF8 -LiteralPath $gcx) -match 'BEGIN HARNESS-KIT')) {
+    Check "Codex global wiring" $true
+  } else {
+    Check "Codex global wiring" $false
   }
 }
 

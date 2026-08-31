@@ -47,6 +47,13 @@
   `git checkout harness-kit/main -- tools/update.py tools/lib .engine-manifest.yml`. An agent
   present in the session runs it; the boundary is stated here because nothing in the traceback
   says which side of it you are on.
+- **Two capabilities exist for Claude Code and for nobody else.** The session-start catch-up and
+  the daily update check are `.claude/settings.json` hooks; the six `/harness-*` procedures are
+  commands only there. `rules/multi-agent.md` now tells every other runtime to run the two scripts
+  itself and to read the command files as procedures — but that is an instruction an agent
+  follows, not a mechanism, and nothing detects a Codex session that never did. A skill has the
+  same shape: `.claude/skills/<name>/SKILL.md` is a readable procedure everywhere and an invocable
+  capability in one place.
 - **Cursor is wired by hand, once.** It has no scriptable global rules file, so both installers
   write a ready-to-paste snippet and print a manual step. The snippet points at `AGENTS.md`, so a
   rule added later still reaches it — but a base whose owner never pasted it is canon-free in
