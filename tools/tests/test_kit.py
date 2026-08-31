@@ -67,6 +67,19 @@ def write(root: Path, relpath: str, text: str):
     target.write_text(text, encoding="utf-8")
 
 
+class TempCase(unittest.TestCase):
+    """A throwaway directory per test, cleaned up whichever way the test ends.
+
+    The same three lines were copy-pasted into sixteen setUps, which is sixteen chances to
+    forget the cleanup and one leaked tree per omission.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.tmpdir = Path(self.tmp.name)
+
+
 def install_tools(root: Path):
     """Put the real code under test into a fake base, the way a real base carries it."""
     (root / "tools").mkdir(parents=True, exist_ok=True)
@@ -82,12 +95,11 @@ def run_update(base: Path, *args):
     )
 
 
-class ManifestReaderTests(unittest.TestCase):
+class ManifestReaderTests(TempCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
+        super().setUp()
+        self.root = self.tmpdir
         write(self.root, ".engine-manifest.yml", MANIFEST)
-        self.addCleanup(self.tmp.cleanup)
 
     def test_sections_are_read_in_order(self):
         self.assertEqual(manifest_lib.read_section("engine", self.root),
@@ -108,12 +120,11 @@ class ManifestReaderTests(unittest.TestCase):
             manifest_lib.read_section("nonsense", self.root)
 
 
-class SilentDivergenceTests(unittest.TestCase):
+class SilentDivergenceTests(TempCase):
     """Two states the base could be in while reporting that everything was fine."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
+        super().setUp()
         self.base = Path(self.tmp.name) / "base"
         (self.base / "projects").mkdir(parents=True)
         write(self.base, "knowledge/note.md", "theirs\n")
@@ -304,7 +315,7 @@ class SilentDivergenceTests(unittest.TestCase):
         self.assertNotEqual(saving.returncode, 0, "it saved over a base it could not read")
 
 
-class InstallerSafetyTests(unittest.TestCase):
+class InstallerSafetyTests(TempCase):
     """Two ways the installer reached past what it was pointed at.
 
     Both were demonstrated end to end: the legacy-projects migration absorbed the person's own
@@ -319,8 +330,7 @@ class InstallerSafetyTests(unittest.TestCase):
         return source
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
+        super().setUp()
         self.home = Path(self.tmp.name) / "home"
         self.home.mkdir()
 
@@ -414,7 +424,7 @@ class InstallerSafetyTests(unittest.TestCase):
             self.assertIn("OK   your work here is being recorded", done.stdout)
 
 
-class EnclosingRepositoryTests(unittest.TestCase):
+class EnclosingRepositoryTests(TempCase):
     """Being INSIDE a repository is not the same as BEING one.
 
     A base with no `.git` of its own, anywhere under another repository, makes `git -C <base>`
@@ -425,8 +435,7 @@ class EnclosingRepositoryTests(unittest.TestCase):
     """
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
+        super().setUp()
         self.company = Path(self.tmp.name) / "company"
         (self.company / "src").mkdir(parents=True)
         write(self.company, ".env", "DB_PASSWORD=s3cr3t\n")
@@ -471,12 +480,11 @@ class EnclosingRepositoryTests(unittest.TestCase):
         self.assertIn("no history of its own", done.stdout + done.stderr)
 
 
-class GitHelperTests(unittest.TestCase):
+class GitHelperTests(TempCase):
     """The contract every tool but `sync.py` now shares, pinned so it cannot drift back."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
+        super().setUp()
         self.root = Path(self.tmp.name)
         git(self.root, "init", "-q", "-b", "main")
 
@@ -511,7 +519,7 @@ class GitHelperTests(unittest.TestCase):
             gitrun.run(self.root, "status")
 
 
-class ContainmentTests(unittest.TestCase):
+class ContainmentTests(TempCase):
     """A manifest entry becomes a filesystem operation, so containment is the manifest's job.
 
     Every guard downstream compared strings against `exclude:`, and a string comparison cannot
@@ -522,12 +530,11 @@ class ContainmentTests(unittest.TestCase):
     """
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name) / "base"
+        super().setUp()
+        self.root = self.tmpdir / "base"
         (self.root / "knowledge").mkdir(parents=True)
         write(self.root, ".engine-manifest.yml",
               "version: 1.0.0\n\nengine:\n  - rules/\n\nexclude:\n  - knowledge/\n")
-        self.addCleanup(self.tmp.cleanup)
 
     def test_a_missing_manifest_names_the_recovery_instead_of_a_traceback(self):
         """The base that most needs `--self-heal` is the one whose manifest is gone.
@@ -623,11 +630,10 @@ class CoverageRuleTests(unittest.TestCase):
         self.assertFalse(manifest_lib.covered_by("roles/*/", "roles/_run-frame.md"))
 
 
-class RetirementTests(unittest.TestCase):
+class RetirementTests(TempCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        self.addCleanup(self.tmp.cleanup)
+        super().setUp()
+        self.root = self.tmpdir
 
     def test_listed_path_is_removed_and_its_empty_parent_pruned(self):
         write(self.root, ".engine-manifest.yml", MANIFEST)
@@ -656,14 +662,13 @@ class RetirementTests(unittest.TestCase):
                         "a refused sweep must delete nothing at all")
 
 
-class UpdateEndToEndTests(unittest.TestCase):
+class UpdateEndToEndTests(TempCase):
     """The updater against a real remote, on a base that shares no history with the kit."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        root = Path(self.tmp.name)
+        super().setUp()
+        root = self.tmpdir
         self.kit, self.base = root / "kit", root / "base"
-        self.addCleanup(self.tmp.cleanup)
 
         self.kit.mkdir()
         write(self.kit, ".engine-manifest.yml", MANIFEST)
@@ -1144,14 +1149,13 @@ class UpdateEndToEndTests(unittest.TestCase):
         self.assertEqual((self.base / "rules/canon.md").read_text(), "old canon\n")
 
 
-class SyncTests(unittest.TestCase):
+class SyncTests(TempCase):
     """The tool every session runs, on a base of its own."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.base = Path(self.tmp.name) / "base"
+        super().setUp()
+        self.base = self.tmpdir / "base"
         self.base.mkdir(parents=True)
-        self.addCleanup(self.tmp.cleanup)
         (self.base / "tools").mkdir()
         shutil.copy2(KIT_ROOT / "tools" / "sync.py", self.base / "tools" / "sync.py")
         git(self.base, "init", "-q", "-b", "main")
@@ -1263,13 +1267,12 @@ class RefusalWordingTests(unittest.TestCase):
         self.assertIn("safe on this machine", directive)
 
 
-class DivergenceAndOutageTests(unittest.TestCase):
+class DivergenceAndOutageTests(TempCase):
     """The two shapes that lose work if they are handled wrong: both sides moved, and no network."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        root = Path(self.tmp.name)
-        self.addCleanup(self.tmp.cleanup)
+        super().setUp()
+        root = self.tmpdir
         self.remote = root / "remote.git"
         subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(self.remote)], check=True)
         # Seed the remote first. Cloning an EMPTY repository twice gives each copy its own root
@@ -1385,14 +1388,13 @@ class DivergenceAndOutageTests(unittest.TestCase):
                             "the work must still be recorded locally")
 
 
-class SelfHealTests(unittest.TestCase):
+class SelfHealTests(TempCase):
     """The updater ships through the update, so a broken one cannot repair itself normally."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        root = Path(self.tmp.name)
+        super().setUp()
+        root = self.tmpdir
         self.kit, self.base = root / "kit", root / "base"
-        self.addCleanup(self.tmp.cleanup)
 
         self.kit.mkdir()
         write(self.kit, ".engine-manifest.yml", MANIFEST)
@@ -1446,17 +1448,16 @@ class SelfHealTests(unittest.TestCase):
 
 
 @unittest.skipIf(shutil.which("bash") is None, "the shell installer needs bash")
-class InstallerTests(unittest.TestCase):
+class InstallerTests(TempCase):
     """The installer, run the way a person runs it — once, on a machine that has nothing."""
 
     ANSWERS = ("{home}", "mybase", "Русский", "Y", "N", "N", "N",
                "Test Person", "test@example.invalid", "N")
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.home = Path(self.tmp.name) / "home"
+        super().setUp()
+        self.home = self.tmpdir / "home"
         self.home.mkdir(parents=True)
-        self.addCleanup(self.tmp.cleanup)
 
     def install(self):
         answers = "\n".join(a.format(home=self.home) for a in self.ANSWERS) + "\n"
@@ -1500,15 +1501,14 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(wiring.count("BEGIN HARNESS-KIT"), 1)
 
 
-class MigrationTests(unittest.TestCase):
+class MigrationTests(TempCase):
     """The channel for a change replacement cannot express: a path in the person's space moving."""
 
     BASE_MANIFEST = MANIFEST
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        self.addCleanup(self.tmp.cleanup)
+        super().setUp()
+        self.root = self.tmpdir
 
     def declare(self, *lines):
         body = "migrations:\n" + "".join("  - %s\n" % line for line in lines) if lines else "migrations: []\n"
@@ -1573,13 +1573,12 @@ class MigrationTests(unittest.TestCase):
         self.assertTrue((self.root / "pointers/stack.md").exists())
 
 
-class ReleaseGateTests(unittest.TestCase):
+class ReleaseGateTests(TempCase):
     """The authoring gates, on a repository shaped like the kit."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        self.addCleanup(self.tmp.cleanup)
+        super().setUp()
+        self.root = self.tmpdir
         sys.path.insert(0, str(KIT_ROOT / "tools"))
         import importlib
         self.gate = importlib.import_module("check_kit")
@@ -1640,7 +1639,7 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertEqual(self.failures, [])
 
 
-class ReleaseGateWiringTests(unittest.TestCase):
+class ReleaseGateWiringTests(TempCase):
     """The gate as an author actually runs it — a check that exists but is not wired runs never."""
 
     GATE_MANIFEST = """version: 1.0.0
@@ -1669,9 +1668,8 @@ retired: []
 """
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        self.addCleanup(self.tmp.cleanup)
+        super().setUp()
+        self.root = self.tmpdir
         write(self.root, ".engine-manifest.yml", self.GATE_MANIFEST)
         write(self.root, "VERSION", "1.0.0\n")
         write(self.root, ".claude-plugin/plugin.json", '{"version": "1.0.0"}\n')
@@ -1784,14 +1782,13 @@ retired: []
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
 
 
-class PortabilityGateTests(unittest.TestCase):
+class PortabilityGateTests(TempCase):
     """Every clause must fire on real code and stay silent on prose. A gate that cannot fail is
     indistinguishable from a codebase that is clean."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        self.addCleanup(self.tmp.cleanup)
+        super().setUp()
+        self.root = self.tmpdir
 
     def findings(self, relpath, body, binary=False):
         target = self.root / relpath
