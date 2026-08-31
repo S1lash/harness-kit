@@ -376,6 +376,9 @@ def check_seeds_unchanged(root, template, ref, fail):
         return
     if git("cat-file", "-e", "%s:VERSION" % ref, root=root)[0] != 0:
         # Nothing has ever been released from this ref, so no base carries a frozen seed yet.
+        # Said out loud rather than returning quietly: the real trigger is a CLONE, not a
+        # release, and silence here is indistinguishable from the check running and passing.
+        fail.note("skipped the frozen-seed check — nothing was ever released from %s" % ref)
         return
     for entry in template:
         if not git("cat-file", "-e", "%s:%s" % (ref, entry), root=root)[0] == 0:

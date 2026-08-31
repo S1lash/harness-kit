@@ -490,17 +490,28 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
     except migrate_lib.MigrationRefused:
         pending_moves = []
     # Retirement is the other half of replacement — the kit withdrawing its own path, already
-    # fenced off from the person's space by a protection that can only widen. A MOVE is
-    # different in kind: `migrations:` exists precisely to rearrange the person's own space, so
-    # it is the one thing here that changes their files rather than the kit's, and
+    # fenced off from the person's space by a protection that can only widen. So it runs here,
+    # BEFORE the gate below: holding the kit's own withdrawal behind a confirmation that is
+    # about the person's files leaves every declared deletion undone for as long as an
+    # unrelated move stays unconfirmed, and nothing in the output would say so.
+    carried, removed, blocked = [], [], []
+    try:
+        removed = retire_lib.run(
+            root, protected=sorted(set(protected_before) | set(incoming.exclude)))
+    except retire_lib.RetirementRefused as refusal:
+        blocked.append("refusing to drop paths that belong to the person, not the kit: %s"
+                       % ", ".join(refusal.trespassing))
+
+    # A MOVE is different in kind: `migrations:` exists precisely to rearrange the person's own
+    # space, so it is the one thing here that changes their files rather than the kit's, and
     # `rules/safety.md` requires it to be seen before it runs.
-    if pending_moves and not confirmed:
+    if pending_moves and not confirmed and not blocked:
         print("%s this update wants to move things in the person's own space:" % PREFIX)
         for move in pending_moves:
             print("  > move %s to %s%s"
                   % (move.source, move.destination, " — %s" % move.note if move.note else ""))
-        print("%s the kit paths above are already replaced. Nothing has been moved."
-              % PREFIX)
+        print("%s the kit paths above are already replaced%s. Nothing of the person's has moved."
+              % (PREFIX, ", and what the kit withdrew is gone" if removed else ""))
         print(DIRECTIVE + " tell the person in plain words what is about to move and what it means "
               "for them — these are their own files, not the kit's — then run the same command "
               "with --confirm once they are content.")
@@ -509,18 +520,10 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
     # The two passes are independent, so one refusing must not cancel the other. Returning on the
     # first refusal left every declared deletion undone for as long as an unrelated move stayed
     # blocked — and said nothing about it, so nobody could know retirement had been skipped.
-    carried, removed, blocked = [], [], []
     try:
         carried = migrate_lib.run(root)
     except migrate_lib.MigrationRefused as refusal:
         blocked.append("a declared change could not be carried out: %s" % refusal)
-
-    try:
-        removed = retire_lib.run(
-            root, protected=sorted(set(protected_before) | set(incoming.exclude)))
-    except retire_lib.RetirementRefused as refusal:
-        blocked.append("refusing to drop paths that belong to the person, not the kit: %s"
-                       % ", ".join(refusal.trespassing))
 
     if blocked:
         return fail(*(blocked + [

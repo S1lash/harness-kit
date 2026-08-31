@@ -123,10 +123,20 @@ def this_checkout_is_the_kit() -> bool:
     """True only where the kit is authored, false on a base somebody installed it into.
 
     `tools/tests/` is an `engine:` path, so this suite ships and `/harness-doctor` runs it on
-    every base. Most of it belongs there — it proves the machinery that base runs. The installer
-    end-to-end tests do not: they need a PRISTINE kit to point at, which a base is not and
-    cannot be made into, and a person has already installed. The kit's own remote is the honest
-    discriminator, and it is the same question `check_kit_remote_is_this_repository` asks.
+    every base. Most of it belongs there — it proves the MACHINERY that base runs, which is the
+    same everywhere. Two kinds of test do not, and both go behind `AUTHOR_SIDE`:
+
+    - the installer end to end, which needs a pristine kit to point at — a base is not one and
+      cannot be made into one, and its owner has already installed;
+    - anything asserting that THIS TREE's content is coherent. On a base that content is partly
+      the person's: `AGENTS.md` is a file their agent is told to edit, `rules/` may hold a rule
+      of their own, and a rule they added is not yet in the list until the session that notices
+      repairs it. `check_kit.py` reports every one of those conditions already, in the register
+      that fits — a base with something to fix. A test failing says something else entirely,
+      because `/harness-doctor` reads it as broken machinery and a risk of lost work.
+
+    The kit's own remote is the honest discriminator, and it is the same question
+    `check_kit_remote_is_this_repository` asks.
     """
     declared = manifest_lib.read_kit_remote(KIT_ROOT)
     origin = gitrun.run(KIT_ROOT, "remote", "get-url", "origin")
@@ -137,8 +147,8 @@ def this_checkout_is_the_kit() -> bool:
 
 AUTHOR_SIDE = unittest.skipUnless(
     this_checkout_is_the_kit(),
-    "the installer is exercised where the kit is authored — this checkout is a base, and "
-    "install.sh would read it as one and install in place over it")
+    "asked where the kit is authored — this checkout is a base, and what it holds is partly "
+    "the person's; check_kit.py is what reports on a base")
 
 
 def code_strings(source: str) -> set:
@@ -171,19 +181,30 @@ def code_strings(source: str) -> set:
 
 
 def git_argument_pairs(source: str) -> set:
-    """Every adjacent pair of literal arguments handed to a call in this source.
+    """Every adjacent pair of literal arguments this code assembles, however it assembles them.
 
     `checkout` is how an update replaces a kit path — `checkout <ref> -- <path>` writes what the
     ref holds. With nothing between the two it is the opposite operation, and it throws away
     whatever the person has not saved. Only the adjacency separates them.
+
+    Both spellings count: arguments passed positionally, and a list literal built to be handed
+    to `subprocess`. Reading only the first would leave the check depending on which idiom a
+    future author happened to reach for.
     """
     pairs = set()
+
+    def literals(nodes):
+        return [n.value if isinstance(n, ast.Constant) and isinstance(n.value, str) else None
+                for n in nodes]
+
     for node in ast.walk(ast.parse(source)):
-        if not isinstance(node, ast.Call):
+        if isinstance(node, ast.Call):
+            values = literals(node.args)
+        elif isinstance(node, (ast.List, ast.Tuple)):
+            values = literals(node.elts)
+        else:
             continue
-        literals = [a.value if isinstance(a, ast.Constant) and isinstance(a.value, str) else None
-                    for a in node.args]
-        for first, second in zip(literals, literals[1:]):
+        for first, second in zip(values, values[1:]):
             if first is not None and second is not None:
                 pairs.add((first, second))
     return pairs
@@ -1213,6 +1234,36 @@ class UpdateEndToEndTests(TempCase):
         self.assertFalse((self.base / "old").exists(),
                          "the unrelated retirement was skipped because the move was blocked")
 
+    def test_a_move_awaiting_confirmation_does_not_hold_back_a_retirement(self):
+        """The kit withdrawing its own path needs nobody's permission, and waited for one anyway.
+
+        A move rearranges the PERSON's files, so it is shown before it runs. Retirement is the
+        other half of replacement and touches only what the kit owns. Gating the second on the
+        first left every declared deletion undone for as long as the move stayed unconfirmed —
+        indefinitely, if the person simply never came back to it — while the output said only
+        that nothing had been moved.
+        """
+        declared = MANIFEST.replace(
+            "retired:\n", "retired:\n  - old/gone.md\n", 1).replace(
+            "retired:",
+            "migrations:\n  - move pointers -> knowledge/pointers | note\n\nretired:")
+        write(self.kit, ".engine-manifest.yml", declared)
+        git(self.kit, "add", "-A")
+        git(self.kit, "commit", "-qm", "declare a move and a retirement")
+        write(self.base, "pointers/stack.md", "theirs\n")
+        git(self.base, "add", "-A")
+        git(self.base, "commit", "-qm", "their pointers")
+
+        done = run_update(self.base)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("move pointers to knowledge/pointers", done.stdout)
+        self.assertTrue((self.base / "pointers/stack.md").exists(),
+                        "their files moved without being confirmed")
+        self.assertFalse((self.base / "old").exists(),
+                         "the retirement waited on a confirmation that was not about it")
+        self.assertIn("what the kit withdrew is gone", done.stdout,
+                      "it deleted something and said nothing had happened")
+
     def test_a_declared_move_is_carried_by_the_update_itself(self):
         # End to end: the kit declares it, the base takes the update, the path has moved. The
         # declaration is read from the manifest that arrives in the SAME run — which is why it is
@@ -1811,6 +1862,38 @@ class ReleaseGateTests(TempCase):
         self.assertEqual(len(self.found), 1)
         self.assertIn("my-work-log.md", self.found)
 
+    def test_a_release_that_does_not_move_version_fails(self):
+        """The last check body nothing covered, and its failure is invisible by construction.
+
+        `update.py --check` compares the kit's VERSION against the base's. A release that
+        changes kit paths without moving it reads as "already current" on every base — nobody
+        is ever told a new version exists, and no error is produced anywhere to notice.
+        """
+        write(self.root, "VERSION", "1.0.0\n")
+        write(self.root, "rules/canon.md", "as released\n")
+        write(self.root, "CHANGELOG.md", "as released\n")
+        init_repo(self.root)
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "release 1.0.0")
+        write(self.root, "rules/canon.md", "changed, and VERSION did not move\n")
+        kitchecks.check_version_moved(self.root, ["rules/"], "main", self.found)
+        self.assertIn("VERSION", self.found)
+        self.assertIn("still 1.0.0", self.found)
+
+    def test_a_release_that_moves_version_but_not_the_changelog_fails(self):
+        # The update tells each person what arrived by reading CHANGELOG.md. A version that
+        # moved with nothing written down announces a change nobody can look up.
+        write(self.root, "VERSION", "1.0.0\n")
+        write(self.root, "rules/canon.md", "as released\n")
+        write(self.root, "CHANGELOG.md", "as released\n")
+        init_repo(self.root)
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "release 1.0.0")
+        write(self.root, "rules/canon.md", "changed\n")
+        write(self.root, "VERSION", "1.1.0\n")
+        kitchecks.check_version_moved(self.root, ["rules/"], "main", self.found)
+        self.assertIn("CHANGELOG.md", self.found)
+
     def test_the_seed_itself_is_allowed_to_ship(self):
         write(self.root, "activities/_index.md", "the seed\n")
         init_repo(self.root)
@@ -2366,6 +2449,7 @@ class PortabilityGateTests(TempCase):
         kitchecks.check_section_references(fake, found)
         self.assertIn("does not exist", found)
 
+    @AUTHOR_SIDE
     def test_every_pointer_the_kit_ships_resolves_today(self):
         found = kitchecks.Report()
         kitchecks.check_section_references(KIT_ROOT, found)
@@ -2451,6 +2535,7 @@ class PortabilityGateTests(TempCase):
             KIT_ROOT, ["tools/helper.sh", "tools/helper.ps1"], paired)
         self.assertEqual(len(paired), 0, list(paired))
 
+    @AUTHOR_SIDE
     def test_the_kit_it_ships_today_is_clean(self):
         self.assertEqual([str(f) for f in portability.scan(KIT_ROOT)], [])
 
@@ -2595,8 +2680,14 @@ class WindowsInstallerTests(unittest.TestCase):
         self.assertEqual(in_shell, in_windows)
 
 
+@AUTHOR_SIDE
 class ShippedKitTests(unittest.TestCase):
-    """The kit in this working tree is coherent — the same gate a release runs."""
+    """The kit in this working tree is coherent — the same gate a release runs.
+
+    Author-side by definition: every assertion here is about the CONTENT of the tree it runs in,
+    and on a base that content is partly the person's. `check_kit.py` is what tells them about
+    their own base, and it says "something to fix" rather than "your tooling is broken".
+    """
 
     def test_structural_gate_passes(self):
         done = run_tool(KIT_ROOT, "check_kit.py", cwd=KIT_ROOT)

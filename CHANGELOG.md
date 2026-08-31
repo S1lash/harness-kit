@@ -49,6 +49,22 @@ present; evolution is logged here.
   with no ref between them — are covered now, and the invariant in `ARCHITECTURE.md` says so.
 - The recovery text for a broken contract named a remote no clone carries, so on a second device
   both remedies were dead ends. It says how to add it.
+- Six shipped tests asserted that THIS TREE's content was coherent, which on a base is partly the
+  person's: `AGENTS.md` is a file their agent is told to edit, and `rules/` may hold a rule of
+  their own that the list has not caught up with yet — a state the contract itself says occurs.
+  During that window `/harness-doctor` announced broken machinery and a risk of lost work, while
+  `check_kit.py` said the base was sound. The tests are author-side now; reporting on a base is
+  `check_kit.py`'s job, and it says "something to fix" rather than "your tooling is broken".
+- Retirement no longer waits on a confirmation that is not about it. A move rearranges the
+  person's own files and is shown before it runs; the kit withdrawing its own path needs nobody's
+  permission. Gating the second on the first left every declared deletion undone for as long as
+  the move stayed unconfirmed — indefinitely, if nobody came back to it — while the output said
+  only that nothing had moved.
+- `check_version_moved` was the last check body no test covered, and its failure is invisible by
+  construction: a release that changes kit paths without moving `VERSION` reads as "already
+  current" on every base, so nobody is ever told a new version exists.
+- The frozen-seed check says when it skipped itself. Silence there was indistinguishable from the
+  check running and passing.
 
 ## 2026-08-30
 
