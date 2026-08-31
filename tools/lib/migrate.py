@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Carry a change the kit cannot express by replacing a file.
 
-Replacement covers the kit's own paths and retirement covers the ones it dropped. Neither can
+Replacement covers the kit's own paths and retirement covers the ones it dropped. Neither may
 touch the person's space — which is right, it is theirs — so a kit change that REQUIRES something
-there to move had no channel at all, and the kit was forbidden from making one.
+there to move needs a channel of its own. This is it.
 
 Three properties decide the shape, and they are why this is not the ordered chain with a ledger
 that comparable engines use:

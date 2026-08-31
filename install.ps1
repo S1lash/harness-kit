@@ -494,8 +494,8 @@ if ($GitOn) {
   # Checked, not assumed: without history nothing here can travel, and every other OK line
   # above would read as though it could.
   Check "your work here is being recorded" ([bool](Git-Q -C $Dest log -1 --format=%H))
-  # Named for what was actually established: an origin that was already there was never checked,
-  # and calling it "private" because a URL exists is the assertion that hid a public one.
+  # Named for what is actually established: an origin that is already there has never been
+  # checked, and calling it "private" because a URL exists is what hides a public one.
   $OriginUrl = Git-Q -C $Dest remote get-url origin
   $Visibility = ""
   if (Get-Command gh -ErrorAction SilentlyContinue) {

@@ -466,9 +466,8 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
         git("checkout", ref, "--", relpath, root=root)
         resolved += 1
 
-    # A run that resolves nothing is a broken update, not an up-to-date base, and
-    # the two are indistinguishable without this check — which is exactly how an
-    # engine once reported success for weeks while applying nothing at all.
+    # A run that resolves nothing is a broken update, not an up-to-date base, and without this
+    # check the two are indistinguishable: an engine that applies nothing reports success.
     if resolved == 0:
         return fail(
             "not one of the %d kit paths was found in %s."
@@ -517,9 +516,9 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
               "with --confirm once they are content.")
         return 0
 
-    # The two passes are independent, so one refusing must not cancel the other. Returning on the
-    # first refusal left every declared deletion undone for as long as an unrelated move stayed
-    # blocked — and said nothing about it, so nobody could know retirement had been skipped.
+    # The two passes are independent, so one refusing must not cancel the other: returning on the
+    # first refusal leaves every declared deletion undone for as long as an unrelated move stays
+    # blocked, and says nothing about it.
     try:
         carried = migrate_lib.run(root)
     except migrate_lib.MigrationRefused as refusal:

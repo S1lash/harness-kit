@@ -346,11 +346,10 @@ class SilentDivergenceTests(TempCase):
         self.assertNotIn("projects kept separately", done.stdout)
 
     def test_a_session_that_ends_with_unsaved_work_saves_it(self):
-        """The half of the culture that had no mechanism at all.
+        """The floor under save-out, so the case the design exists for has a mechanism.
 
-        Sync-in was automatic from the first day; save-out was rule-only, so the case the whole
-        design exists for — work done on a phone, session evaporates — rested entirely on the
-        agent remembering. This is the floor under that, not a replacement for it.
+        Without it, work done on a phone whose session evaporates rests entirely on the agent
+        remembering to save. This is the floor under that rule, not a replacement for it.
         """
         remote = Path(self.tmp.name) / "end.git"
         bare_remote(remote)
@@ -536,8 +535,8 @@ class InstallerSafetyTests(TempCase):
     def test_wiring_codex_is_verified_the_way_wiring_claude_is(self):
         """Asserting the check EXISTS is not asserting it runs.
 
-        Claude's block was verified after install and Codex's was not, so a Codex user could
-        finish an install believing their runtime was set up when nothing had confirmed it.
+        Every runtime's block is verified after install. Checking one and not another lets a
+        person finish an install believing their runtime is set up when nothing confirmed it.
         """
         done = self.install("%s\nharness\nEnglish\ny\ny\nn\nn\nElena\ne@example.invalid\nn\n"
                             % self.home)
@@ -556,11 +555,11 @@ class InstallerSafetyTests(TempCase):
         self.assertTrue(head.stdout.strip(), "the base was left with no history")
 
     def test_a_base_that_could_not_record_anything_says_so(self):
-        """A swallowed commit failure left every file staged, no history, and thirteen OK lines.
+        """A swallowed commit failure leaves every file staged, no history, and "Done".
 
         The reachable cause is a project repository with no commits of its own sitting under
-        `projects/`: `git add -A` fails outright on it, the failure was discarded, and the
-        installer printed its health check and "Done" over a base that had recorded nothing.
+        `projects/`: `git add -A` fails outright on it, and an installer that discards the
+        failure prints its health check over a base that has recorded nothing.
         """
         source = self.source()
         nested = source / "projects" / "newapp"
@@ -586,10 +585,10 @@ class EnclosingRepositoryTests(TempCase):
     """Being INSIDE a repository is not the same as BEING one.
 
     A base with no `.git` of its own, anywhere under another repository, makes `git -C <base>`
-    answer for THAT repository. Demonstrated before the fix: `save` staged the enclosing
-    project's whole worktree — an unrelated `.env` and someone's work-in-progress — committed it
-    and pushed it to that project's remote, and reported "saved" in the plain language the rules
-    require, with nothing in the output naming the repository it had actually written to.
+    answer for THAT repository. Unguarded, `save` stages the enclosing project's whole worktree —
+    an unrelated `.env`, somebody's work-in-progress — commits it, pushes it to that project's
+    remote, and reports "saved" in the plain language the rules require, with nothing in the
+    output naming the repository it actually wrote to.
     """
 
     def setUp(self):
@@ -678,10 +677,10 @@ class GitHelperTests(TempCase):
 class ContainmentTests(TempCase):
     """A manifest entry becomes a filesystem operation, so containment is the manifest's job.
 
-    Every guard downstream compared strings against `exclude:`, and a string comparison cannot
-    see that `../x` leaves the base or that an absolute path was never in it. Demonstrated before
-    the fix: a `retired:` entry deleted a file outside the base and the parent-pruning walked UP
-    the filesystem removing three more directories; `./knowledge/x` deleted the person's space
+    A guard downstream compares strings against `exclude:`, and a string comparison cannot see
+    that `../x` leaves the base or that an absolute path is not in it. Without containment at the
+    parser, a `retired:` entry deletes a file outside the base and the parent-pruning walks UP the
+    filesystem removing every directory it empties, and `./knowledge/x` deletes the person's space
     that `exclude: knowledge/` exists to protect.
     """
 
@@ -695,10 +694,9 @@ class ContainmentTests(TempCase):
     def test_a_missing_manifest_names_the_recovery_instead_of_a_traceback(self):
         """The base that most needs `--self-heal` is the one whose manifest is gone.
 
-        Every reader used to open the file itself, so there was no single place the absence could
-        be handled — and all three tools raised FileNotFoundError at a person who cannot act on
-        one. update.py died inside `resolve_remote` before it ever reached the carefully worded
-        refusal written two lines below.
+        One reader, so the absence has a single place to be handled. A reader per tool raises
+        FileNotFoundError at a person who cannot act on one, and `update.py` dies inside
+        `resolve_remote` before it ever reaches the carefully worded refusal below it.
         """
         bare = Path(self.tmp.name) / "no-manifest"
         bare.mkdir()
@@ -717,12 +715,12 @@ class ContainmentTests(TempCase):
             self.assertIn("self-heal", done.stderr, tool)
 
     def test_a_contract_that_cannot_be_trusted_names_the_recovery_too(self):
-        """The refusal is right and the traceback was not — an entry reaching outside the base.
+        """The refusal is right; a traceback is not how it reaches the person.
 
-        `ManifestMissing` was given a recovery command and `UnsafeEntry` was not, so the one
-        state where the kit is actively refusing to touch a person's disk reached them as a
-        stack trace. The remedy differs from the missing case — the file is there and one line
-        of it is wrong — so it is said differently.
+        Both broken-contract states carry a recovery command. Without one, the state where the
+        kit is actively refusing to touch a person's disk reaches them as a stack trace. The
+        remedy differs from the missing case — the file is there and one line of it is wrong —
+        so it is said differently.
         """
         base = Path(self.tmp.name) / "unsafe"
         base.mkdir()
@@ -777,9 +775,9 @@ class ContainmentTests(TempCase):
     def test_pruning_empty_parents_never_climbs_out_of_the_base(self):
         """The second rubber band, tested directly because the first one now stops the caller.
 
-        Its stop condition used to be `directory != root`, which is never true for a path that
-        started above the base — so one escaping entry walked UP the filesystem removing every
-        directory it emptied. Four went in the demonstration.
+        The stop condition is containment, not inequality: `directory != root` is never true for
+        a path that starts above the base, so one escaping entry walks UP the filesystem removing
+        every directory it empties.
         """
         outside = Path(self.tmp.name) / "outside" / "a" / "b"
         outside.mkdir(parents=True)
@@ -973,8 +971,8 @@ class UpdateEndToEndTests(TempCase):
         self.assertEqual((self.base / "VERSION").read_text().strip(), "1.0.0")
 
     def test_a_seed_added_after_their_clone_still_reaches_them(self):
-        # The gap this closes: templates never sync, so a seed introduced after somebody cloned
-        # reached them never — while the canon arriving in the same update named it as if it
+        # Templates never sync, so without seeding a seed introduced after somebody cloned
+        # reaches them never — while the canon arriving in the same update names it as though it
         # were there. Absent is created; present is left exactly alone.
         (self.base / "seed.md").unlink()
         done = run_update(self.base)
@@ -985,10 +983,10 @@ class UpdateEndToEndTests(TempCase):
     def test_the_daily_check_stays_quiet_after_it_has_just_run(self):
         """`--max-age` is what `.claude/settings.json` runs at every session start.
 
-        The existing check-mode test passes no `--max-age`, so `max_age > 0` is never true and
-        the cache path — the flag's entire reason to exist — was never executed. A stuck cache
-        would have made the daily check silently permanent, or a broken one made it announce the
-        same version every session until the person stopped reading it.
+        The other check-mode test passes no `--max-age`, so `max_age > 0` is never true there and
+        the cache path — the flag's entire reason to exist — goes unexercised. A stuck cache makes
+        the daily check silently permanent; a broken one announces the same version every session
+        until the person stops reading it.
         """
         first = run_update(self.base, "--check", "--max-age", "86400")
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
@@ -1008,8 +1006,9 @@ class UpdateEndToEndTests(TempCase):
     def test_global_wiring_that_names_another_base_is_reported(self):
         """Reported, never edited — it is outside the base (`rules/safety.md`).
 
-        Nothing re-runs the installer, so a base that moved keeps a block pointing at where it
-        used to be, and the canon then reaches that runtime from the wrong place or not at all.
+        Nothing re-runs the installer, so a base that moves keeps a block pointing at the path it
+        no longer occupies, and the canon then reaches that runtime from the wrong place or not
+        at all.
         """
         home = Path(self.tmp.name) / "fake-home"
         (home / ".claude").mkdir(parents=True)
@@ -1131,8 +1130,8 @@ class UpdateEndToEndTests(TempCase):
     def test_a_directory_the_release_adds_to_engine_is_matched_however_it_is_written(self):
         """`engine:` entries are compared against paths, so the trailing slash has to come off.
 
-        The incoming list is read separately from the local one, and only the local reader
-        stripped it — so a release adding `doctrine/` rather than `doctrine` would have been
+        The incoming list is read separately from the local one, and both readers strip it. With
+        only the local one stripping, a release adding `doctrine/` rather than `doctrine` is
         compared as a path that does not exist and quietly counted as absent.
         """
         widened = MANIFEST.replace("  - rules/", "  - rules/\n  - extra/")
@@ -1214,8 +1213,8 @@ class UpdateEndToEndTests(TempCase):
     def test_a_blocked_move_does_not_cancel_an_unrelated_deletion(self):
         """The two passes are independent, so one refusing must not silently skip the other.
 
-        Returning on the first refusal left every declared deletion undone for as long as an
-        unrelated move stayed blocked — and said nothing, so nobody could know.
+        Returning on the first refusal leaves every declared deletion undone for as long as an
+        unrelated move stays blocked, and says nothing about it.
         """
         declared = MANIFEST.replace(
             "retired:",
@@ -1239,9 +1238,9 @@ class UpdateEndToEndTests(TempCase):
 
         A move rearranges the PERSON's files, so it is shown before it runs. Retirement is the
         other half of replacement and touches only what the kit owns. Gating the second on the
-        first left every declared deletion undone for as long as the move stayed unconfirmed —
-        indefinitely, if the person simply never came back to it — while the output said only
-        that nothing had been moved.
+        first leaves every declared deletion undone for as long as the move stays unconfirmed —
+        indefinitely, if the person never comes back to it — while the output says only that
+        nothing has been moved.
         """
         declared = MANIFEST.replace(
             "retired:\n", "retired:\n  - old/gone.md\n", 1).replace(
@@ -1577,13 +1576,13 @@ class DivergenceAndOutageTests(TempCase):
                              "%s discards uncommitted work with nothing to announce it" % name)
 
     def test_the_updater_replaces_and_never_merges(self):
-        """The invariant the whole update design rests on, and nothing was checking it.
+        """The invariant the whole update design rests on.
 
         An update must never hand the person a conflict inside a file they did not write. That
-        holds today only because the update issues `checkout` and nothing else — a property no
-        gate stated, so a merge added here would have shipped green. It covers every pass that
-        touches the person's files, not only the entry point: the move and the sweep write to
-        their disk exactly as directly as the updater does.
+        holds only because the update issues `checkout` and nothing else — a property nothing
+        else states, so a merge added here ships green unless this catches it. It covers every
+        pass that touches the person's files, not only the entry point: the move and the sweep
+        write to their disk exactly as directly as the updater does.
         """
         banned = {"merge", "cherry-pick", "stash", "reset", "revert"}
         for name in self.shipped_python():
@@ -1952,6 +1951,28 @@ class ReleaseGateTests(TempCase):
         write(self.root, "VERSION", "1.1.0\n")
         kitchecks.check_version_moved(self.root, ["rules/"], "main", self.found)
         self.assertIn("CHANGELOG.md", self.found)
+
+    def test_a_person_owned_file_shipping_with_content_fails_the_release(self):
+        """A file under `exclude:` may ship, but only as an empty shape.
+
+        A clone carries the whole repository, so a line the kit's author leaves in one of the
+        person's own files arrives in every base as though they wrote it. Directory entries are
+        walked with git; a single file needs asking directly, or it is watched by nothing.
+        """
+        write(self.root, "notes.jsonl", '{"the author": "left this"}\n')
+        init_repo(self.root)
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "kit")
+        kitchecks.check_person_space_ships_pristine(self.root, [], ["notes.jsonl"], self.found)
+        self.assertIn("notes.jsonl", self.found)
+
+    def test_an_empty_person_owned_file_is_the_shape_and_ships(self):
+        write(self.root, "notes.jsonl", "")
+        init_repo(self.root)
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "kit")
+        kitchecks.check_person_space_ships_pristine(self.root, [], ["notes.jsonl"], self.found)
+        self.assertEqual(len(self.found), 0, list(self.found))
 
     def test_the_seed_itself_is_allowed_to_ship(self):
         write(self.root, "activities/_index.md", "the seed\n")
@@ -2413,11 +2434,11 @@ class PortabilityGateTests(TempCase):
         self.assertIn("listed on its own", found)
 
     def test_a_second_canon_list_is_caught_wherever_it_sits(self):
-        """The check knew about one file; a second list is a second truth wherever it lives.
+        """A second list is a second truth wherever it lives, so every shipped page is watched.
 
-        `CLAUDE.md` is the likely place and was the only one watched. A list copied into a README
-        or a doctrine page drifts exactly the same way, and the person goes on believing a rule
-        applies.
+        `CLAUDE.md` is the likely place and not the only possible one: a list copied into a
+        README or a doctrine page drifts exactly the same way, and the person goes on believing
+        a rule applies.
         """
         for where in ("README.md", "doctrine/kit-ownership.md", "CLAUDE.md"):
             fake = Path(self.tmp.name) / where.replace("/", "_")

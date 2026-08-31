@@ -85,7 +85,7 @@ class Report:
 def git(*args, root: Path):
     """Run git in `root`. Same contract as everywhere else, stderr included.
 
-    This one used to discard stderr, so a failure here could only ever be "it did not work".
+    Included because without it a failure here can only ever be reported as "it did not work".
     """
     return gitrun.run(root, *args)
 
@@ -469,7 +469,14 @@ def check_person_space_ships_pristine(root, template, exclude, fail):
     """
     seeds = {entry.rstrip("/") for entry in template}
     for entry in exclude:
+        # A single FILE listed here may ship, but only empty: the kit gives the person the shape
+        # to fill, never a line of its own. Skipping non-directory entries leaves that unwatched.
         if not entry.endswith("/"):
+            target = root / entry
+            if target.is_file() and target.stat().st_size and entry not in seeds:
+                fail(entry, "is the kit's own content in a file that belongs to the person",
+                     "A clone carries it as though they wrote it. Ship it empty, or move it to a "
+                     "kit-owned path.")
             continue
         result = git("ls-files", "--", entry, root=root)
         code, listing = result.code, result.out
@@ -488,7 +495,7 @@ def check_removals_retired(root, engine, retired, ref, fail):
 
     The updater checks a directory out of the kit; git ADDS and UPDATES, it does not delete what
     the kit no longer has. So every removal inside an engine path needs a `retired:` line, and
-    forgetting one is invisible until a person is carrying a file the kit stopped shipping.
+    forgetting one is invisible until a person is carrying a file the kit no longer ships.
     """
     result = git("rev-parse", "--verify", "--quiet", ref, root=root)
     code, _ = result.code, result.out

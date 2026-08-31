@@ -82,10 +82,10 @@ def remote_is_public(url):
 class BaseState:
     """Everything the tools below decide from, with a name per fact.
 
-    It was a fourteen-key dict indexed by string literal in five consumers, so `state.detatched`
-    was a runtime KeyError and a key nobody set read as absent. Stdlib only, like the rest of this
-    file — a plain class rather than a dataclass, because the defaults are the contract and
-    writing them once here is what makes every consumer honest.
+    A dict indexed by string literal across five consumers makes `state.detatched` a runtime
+    KeyError and a key nobody set read as absent. Stdlib only, like the rest of this file — a
+    plain class rather than a dataclass, because the defaults are the contract and writing them
+    once here is what makes every consumer honest.
     """
 
     def __init__(self, base):
@@ -137,9 +137,9 @@ def read_state():
 
     code, porcelain, err = git("status", "--porcelain")
     if code != 0:
-        # A failed `status` used to read as a CLEAN base: `git_ok` returns None for both, and
-        # `or ""` then made "cannot tell" indistinguishable from "nothing to save". The
-        # session-start path would go on to fast-forward on that reading.
+        # A failed `status` must never read as a CLEAN base. `git_ok` returns None for both
+        # failure and empty output, so `or ""` makes "cannot tell" indistinguishable from
+        # "nothing to save" — and session-start would fast-forward on that reading.
         state.unreadable = err.strip() or "git could not read this base"
         return state
     state.unsaved = [line[3:] for line in porcelain.splitlines() if line]
@@ -171,10 +171,10 @@ def refresh_remote_counts(state):
         state.offline = True
         return
     state.upstream = git_ok("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
-    # A branch with no tracking configured used to leave both counters at zero, so `status`,
-    # `session-start` and `pull` all reported "in step" while the remote was genuinely ahead —
-    # and a read-only session never self-corrects, because nothing pushes to be refused. The
-    # same-named remote branch answers the question perfectly well.
+    # Without a fallback, a branch with no tracking configured leaves both counters at zero, and
+    # `status`, `session-start` and `pull` then all report "in step" while the remote is ahead.
+    # A read-only session never self-corrects from that, because nothing pushes to be refused.
+    # The same-named remote branch answers the question perfectly well.
     reference = state.upstream
     if not reference and state.branch:
         candidate = "origin/%s" % state.branch

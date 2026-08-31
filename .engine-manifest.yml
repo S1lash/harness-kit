@@ -142,10 +142,10 @@ exclude:
   - .claude/skills/
 
 retired:
-  # The commands moved to `.claude/commands/harness-*.md`, where a fresh clone
-  # finds them with no plugin installed. A base that predates the move keeps
-  # offering `/init`, `/doctor` and `/add-skill` from the old location, reading
-  # a contract that describes a layout the kit no longer has.
+  # These commands live at `.claude/commands/harness-*.md`, where a fresh clone
+  # finds them with no plugin installed. A base still carrying the paths below
+  # offers `/init`, `/doctor` and `/add-skill` from a location the kit does not
+  # have, reading a contract that describes a layout that does not exist.
   - commands/init.md
   - commands/doctor.md
   - commands/add-skill.md

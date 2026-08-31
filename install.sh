@@ -481,9 +481,9 @@ if [ "$GIT_ON" -eq 1 ]; then
   [ "${BASE_HAS_HISTORY:-0}" -eq 1 ] && check "your work here is being recorded" 0 \
     || { say "  MISS your work here is being recorded — nothing can reach another device yet"; DOC_OK=0; }
   if [ -n "$(git -C "$DEST" remote get-url origin 2>/dev/null || true)" ]; then
-    # Named for what was actually established. Creation passes `--private`, but an origin that
-    # was already there — a fork of a public repository, say — was never checked, and calling
-    # that "private" on the evidence that a URL exists is the assertion that made it invisible.
+    # Named for what is actually established. Creation passes `--private`, but an origin that
+    # is already there — a fork of a public repository, say — has never been checked, and calling
+    # that "private" on the evidence that a URL exists is what makes a public one invisible.
     ORIGIN_URL="$(git -C "$DEST" remote get-url origin 2>/dev/null || true)"
     VISIBILITY=""
     command -v gh >/dev/null 2>&1 && VISIBILITY="$(gh repo view "$ORIGIN_URL" --json visibility -q .visibility 2>/dev/null || true)"

@@ -34,7 +34,7 @@ relevant flow fixes what it surfaces.
 6. **Sessions catch up on their own, and an ending session saves.** `.claude/settings.json` runs
    `tools/sync.py session-start` at session start and `session-end` when one closes, and `python3`
    is available to run both. Missing either is a WARN, not a FAIL — the canon still requires you
-   to do it by hand, and the end-of-session hook was never a guarantee (`KNOWN-LIMITS.md`).
+   to do it by hand, and the end-of-session hook is not a guarantee (`KNOWN-LIMITS.md`).
 7. **Every project has a contract.** Each directory under `projects/` has `AGENTS.md`, a
    `CLAUDE.md` importing it, and its own `.claude/`. A project without one is a WARN naming it —
    the next session that opens it starts blind (`doctrine/project-home.md`). Each is also a row in

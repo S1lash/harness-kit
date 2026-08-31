@@ -65,6 +65,13 @@ present; evolution is logged here.
   current" on every base, so nobody is ever told a new version exists.
 - The frozen-seed check says when it skipped itself. Silence there was indistinguishable from the
   check running and passing.
+- Every shipped file describes the present. Explanations that leaned on a past state — "this
+  used to", "nothing was checking it", "demonstrated before the fix" — are rewritten as the
+  invariant they protect, in code comments and test docstrings as well as prose. History lives in
+  git, here, and in `DECISIONS.md` (`rules/present-not-history.md`).
+- A file listed under `exclude:` may ship, but only empty. The pristine-space check walked
+  directory entries with git and never asked about a single file, so a line the kit's author
+  leaves in one of the person's own files would arrive in every base as though they wrote it.
 - The release gate refuses a commit marked as written by an assistant — the author or committer
   address, or the marks a tool appends to a message. `rules/communication.md` forbids the mark
   "anywhere … or any artifact" and git authorship is the canonical attribution field of a public

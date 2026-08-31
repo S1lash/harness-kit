@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """The one way this kit runs git.
 
-Three copies existed with three different contracts — one raised when git was missing, one let
-the exception escape, one discarded stderr entirely — so the same failure reported differently
-depending on which tool met it, and a caller could not know which behaviour it was getting
-without reading the helper beside it.
+One helper, one contract. A copy per tool means the same failure is reported differently
+depending on which tool meets it — one raising when git is missing, one letting the exception
+escape, one discarding stderr — and a caller cannot know which behaviour it is getting without
+reading the helper beside it.
 
 `Result` is a named triple rather than a bare tuple so that `out` and `err` cannot be swapped by
 position, and `ok()` is separate from `run()` because "git failed" and "git returned nothing" are
-different facts: collapsing them is what once let a failed `status` read as a clean base.
+different facts: collapsing them lets a failed `status` read as a clean base.
 """
 
 from __future__ import annotations

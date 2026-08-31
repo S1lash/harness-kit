@@ -162,9 +162,9 @@ Two properties fall out of this shape:
 - **Code takes effect one update late; a declaration lands the same run.** The updater ships
   through the update, so new *logic* only runs next time — which is precisely why moves and
   removals are declared as manifest data rather than written as code. For that to hold, every
-  pass has to read the manifest being SHIPPED rather than the one the base still has; each place
-  that read the local copy instead was a section arriving one release late while the dry-run
-  promised it now. A base a year stale converges in one run.
+  pass has to read the manifest being SHIPPED rather than the one the base still has; a pass
+  reading the local copy instead delivers its section one release late while the dry-run promises
+  it now. A base a year stale converges in one run.
 - **Convergent, not sequential.** Migrations are idempotent and keep no ledger of what has been
   applied. A clone that sat untouched for a year has no valid position in an ordered chain; asking
   "is this already done?" of the filesystem always has an answer
