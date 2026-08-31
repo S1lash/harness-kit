@@ -100,7 +100,7 @@ mechanism that has to tell them apart reads the same file:
        │
        ├─ through tools/lib/manifest.py ─┬── tools/update.py      replace, seed, move, drop
        │                                 ├── tools/lib/migrate.py · retire.py
-       │                                 ├── tools/check_kit.py   is the declaration coherent
+       │                                 ├── tools/lib/kitchecks.py  is the declaration coherent
        │                                 └── tools/lib/portability.py   what ships must be portable
        │
        ├─ parsed directly ───────────────┬── install.sh     `kit_remote:`, by sed

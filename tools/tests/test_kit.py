@@ -27,7 +27,7 @@ from lib import gitrun  # noqa: E402
 from lib import manifest as manifest_lib  # noqa: E402
 from lib import migrate as migrate_lib  # noqa: E402
 from lib import portability  # noqa: E402
-import check_kit  # noqa: E402
+from lib import kitchecks  # noqa: E402
 import update as update_module  # noqa: E402
 from lib import retire as retire_lib  # noqa: E402
 
@@ -1591,13 +1591,7 @@ class ReleaseGateTests(TempCase):
     def setUp(self):
         super().setUp()
         self.root = self.tmpdir
-        sys.path.insert(0, str(KIT_ROOT / "tools"))
-        import importlib
-        self.gate = importlib.import_module("check_kit")
-        self.failures = []
-
-    def fail_collector(self, message, why=""):
-        self.failures.append(message)
+        self.found = kitchecks.Report()
 
     def test_an_edited_seed_that_already_shipped_fails_the_release(self):
         write(self.root, "VERSION", "1.0.0\n")
@@ -1606,9 +1600,9 @@ class ReleaseGateTests(TempCase):
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "release")
         write(self.root, "seed.md", "edited after the release\n")
-        self.gate.check_seeds_unchanged(self.root, ["seed.md"], "main", self.fail_collector)
-        self.assertEqual(len(self.failures), 1)
-        self.assertIn("seed", self.failures[0])
+        kitchecks.check_seeds_unchanged(self.root, ["seed.md"], "main", self.found)
+        self.assertEqual(len(self.found), 1)
+        self.assertIn("seed", self.found)
 
     def test_a_seed_added_since_the_release_is_fine(self):
         write(self.root, "VERSION", "1.0.0\n")
@@ -1616,8 +1610,8 @@ class ReleaseGateTests(TempCase):
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "release")
         write(self.root, "new-seed.md", "arrived after\n")
-        self.gate.check_seeds_unchanged(self.root, ["new-seed.md"], "main", self.fail_collector)
-        self.assertEqual(self.failures, [], "seeding delivers a seed that is merely new")
+        kitchecks.check_seeds_unchanged(self.root, ["new-seed.md"], "main", self.found)
+        self.assertEqual(len(self.found), 0, "seeding delivers a seed that is merely new")
 
     def test_nothing_is_frozen_before_the_first_release(self):
         write(self.root, "seed.md", "as committed\n")  # no VERSION at the ref
@@ -1625,8 +1619,8 @@ class ReleaseGateTests(TempCase):
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "unreleased")
         write(self.root, "seed.md", "still being written\n")
-        self.gate.check_seeds_unchanged(self.root, ["seed.md"], "main", self.fail_collector)
-        self.assertEqual(self.failures, [])
+        kitchecks.check_seeds_unchanged(self.root, ["seed.md"], "main", self.found)
+        self.assertEqual(len(self.found), 0)
 
     def test_the_kits_own_notes_in_the_persons_space_fail_the_release(self):
         # There is no extraction step: a clone carries the whole repository, so anything the kit's
@@ -1636,19 +1630,19 @@ class ReleaseGateTests(TempCase):
         git(self.root, "init", "-q", "-b", "main")
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "kit")
-        self.gate.check_person_space_ships_pristine(
-            self.root, ["activities/_index.md"], ["activities/"], self.fail_collector)
-        self.assertEqual(len(self.failures), 1)
-        self.assertIn("my-work-log.md", self.failures[0])
+        kitchecks.check_person_space_ships_pristine(
+            self.root, ["activities/_index.md"], ["activities/"], self.found)
+        self.assertEqual(len(self.found), 1)
+        self.assertIn("my-work-log.md", self.found)
 
     def test_the_seed_itself_is_allowed_to_ship(self):
         write(self.root, "activities/_index.md", "the seed\n")
         git(self.root, "init", "-q", "-b", "main")
         git(self.root, "add", "-A")
         git(self.root, "commit", "-qm", "kit")
-        self.gate.check_person_space_ships_pristine(
-            self.root, ["activities/_index.md"], ["activities/"], self.fail_collector)
-        self.assertEqual(self.failures, [])
+        kitchecks.check_person_space_ships_pristine(
+            self.root, ["activities/_index.md"], ["activities/"], self.found)
+        self.assertEqual(len(self.found), 0)
 
 
 class ReleaseGateWiringTests(TempCase):
@@ -1707,7 +1701,7 @@ retired: []
         self.assertEqual(done.returncode, 1)
         # Not the bare word "seed": the fixture's file IS `seed.md`, so half the gate's other
         # failures name it too and would satisfy a substring check identically.
-        self.assertIn("already exists on every base was edited", done.stderr)
+        self.assertIn("already exists on every base, and it was edited", done.stderr)
 
     def test_a_rule_whose_name_hides_inside_another_is_still_caught(self):
         # The regression: `safety.md` is a substring of `git-safety.md`, so searching AGENTS.md for
@@ -1992,9 +1986,9 @@ class PortabilityGateTests(TempCase):
         portability.LINE_RULES = rules + (invented,)
         self.addCleanup(setattr, portability, "LINE_RULES", rules)
         self.assertIn("CP-99", portability.clauses())
-        failures = []
-        check_kit.check_clause_ids(KIT_ROOT, lambda m, w="": failures.append(m))
-        self.assertTrue(any("CP-99" in m for m in failures), failures)
+        found = kitchecks.Report()
+        kitchecks.check_clause_ids(KIT_ROOT, found)
+        self.assertIn("CP-99", found)
 
     def test_a_clause_nothing_enforces_fails_the_kit(self):
         """Enforcement drifting out from under a written clause is the silent half.
@@ -2005,18 +1999,18 @@ class PortabilityGateTests(TempCase):
         rules = portability.LINE_RULES
         portability.LINE_RULES = tuple(r for r in rules if r.clause != "CP-6")
         self.addCleanup(setattr, portability, "LINE_RULES", rules)
-        failures = []
-        check_kit.check_clause_ids(KIT_ROOT, lambda m, w="": failures.append(m))
-        self.assertTrue(any("CP-6" in m for m in failures), failures)
+        found = kitchecks.Report()
+        kitchecks.check_clause_ids(KIT_ROOT, found)
+        self.assertIn("CP-6", found)
 
     def test_a_clause_the_tests_carry_instead_of_the_scanner_is_still_enforced(self):
         # Two mechanisms can hold a clause. [CP-4] — installer twins in lockstep — is not
         # expressible as a pattern over one file, so the test suite carries it, and the gate has
         # to count that as enforcement rather than demand a scanner rule for everything.
         self.assertNotIn("CP-4", portability.clauses())
-        failures = []
-        check_kit.check_clause_ids(KIT_ROOT, lambda m, w="": failures.append(m))
-        self.assertEqual(failures, [])
+        found = kitchecks.Report()
+        kitchecks.check_clause_ids(KIT_ROOT, found)
+        self.assertEqual(len(found), 0)
 
     # -- release gates a content scanner cannot express ----------------------
     def test_retiring_a_file_from_inside_a_shipped_directory_is_allowed(self):
@@ -2027,17 +2021,17 @@ class PortabilityGateTests(TempCase):
         not be shipped. The fear does not hold: `git checkout <ref> -- <dir>` writes what the ref
         has and never recreates a file the ref lacks.
         """
-        failures = []
-        check_kit.check_retired(KIT_ROOT, ["doctrine/"], [], ["knowledge/"],
-                                ["doctrine/gone.md"], lambda m, w="": failures.append(m))
-        self.assertEqual(failures, [],
+        found = kitchecks.Report()
+        kitchecks.check_retired(KIT_ROOT, ["doctrine/"], [], ["knowledge/"],
+                                ["doctrine/gone.md"], found)
+        self.assertEqual(len(found), 0,
                          "retiring from inside a shipped directory must be expressible")
 
     def test_a_path_that_is_both_shipped_on_its_own_and_retired_fails(self):
-        failures = []
-        check_kit.check_retired(KIT_ROOT, ["doctrine/gone.md"], [], [],
-                                ["doctrine/gone.md"], lambda m, w="": failures.append(m))
-        self.assertTrue(any("listed on its own" in m for m in failures), failures)
+        found = kitchecks.Report()
+        kitchecks.check_retired(KIT_ROOT, ["doctrine/gone.md"], [], [],
+                                ["doctrine/gone.md"], found)
+        self.assertIn("listed on its own", found)
 
     def test_a_second_canon_list_is_caught_wherever_it_sits(self):
         """The check knew about one file; a second list is a second truth wherever it lives.
@@ -2053,10 +2047,29 @@ class PortabilityGateTests(TempCase):
             target.write_text(target.read_text(encoding="utf-8")
                               + "\n@rules/safety.md\n@rules/grounding.md\n@rules/communication.md\n",
                               encoding="utf-8")
-            failures = []
-            check_kit.check_canon_listed_once(fake, lambda m, w="": failures.append(m))
-            self.assertTrue(any("restates the canon list" in m for m in failures),
-                            "a second list in %s was not caught: %s" % (where, failures))
+            found = kitchecks.Report()
+            kitchecks.check_canon_listed_once(fake, found)
+            self.assertIn("restates the canon list", found,
+                          "a second list in %s was not caught: %s" % (where, found))
+
+    def test_a_malformed_canon_entry_does_not_read_as_a_listed_rule(self):
+        """A typo in the list is the shape that passes while the rule reaches nobody.
+
+        The check searched for `@rules/safety.md` anywhere in the contract, so any line
+        CONTAINING it satisfied the search — `@rules/safety.md-old`, a trailing word, a paste
+        gone wrong. The rule is then in force for no runtime and the gate calls the kit ready
+        to ship, which is the exact failure this check exists to prevent.
+        """
+        fake = Path(self.tmp.name) / "typo"
+        shutil.copytree(KIT_ROOT, fake, ignore=shutil.ignore_patterns(".git", "__pycache__"))
+        contract = fake / "AGENTS.md"
+        contract.write_text(
+            contract.read_text(encoding="utf-8").replace("@rules/safety.md\n",
+                                                         "@rules/safety.md-old\n"),
+            encoding="utf-8")
+        found = kitchecks.Report()
+        kitchecks.check_canon_listed_once(fake, found)
+        self.assertIn("rules/safety.md", found)
 
     def test_the_gate_agrees_with_the_updater_about_an_empty_engine_section(self):
         """Two tools, one manifest, opposite verdicts is worse than either being wrong alone.
@@ -2073,11 +2086,8 @@ class PortabilityGateTests(TempCase):
             text = _re.sub(r"^engine:\n(  - .*\n|  #.*\n|\n)*", body,
                            manifest.read_text(encoding="utf-8"), count=1, flags=_re.M)
             manifest.write_text(text, encoding="utf-8")
-            failures = []
-            engine = manifest_lib.read_section("engine", fake)
-            if not engine and not manifest_lib.declares_section("engine", fake):
-                failures.append("no engine: section")
-            self.assertEqual(bool(failures), expect_failure,
+            found, _ = kitchecks.run(fake)
+            self.assertEqual("has no engine: section" in found, expect_failure,
                              "engine: %r declared=%s" % (body, not expect_failure))
 
     def test_the_manifests_own_version_is_a_third_mirror_and_is_held_to_it(self):
@@ -2088,9 +2098,9 @@ class PortabilityGateTests(TempCase):
         manifest = fake / ".engine-manifest.yml"
         manifest.write_text(manifest.read_text(encoding="utf-8")
                             .replace("version: 0.2.0", "version: 9.9.9", 1), encoding="utf-8")
-        failures = []
-        check_kit.check_versions(fake, lambda m, w="": failures.append(m))
-        self.assertTrue(any("manifest says version" in m for m in failures), failures)
+        found = kitchecks.Report()
+        kitchecks.check_versions(fake, found)
+        self.assertIn("says version '9.9.9'", found)
 
     def test_a_pointer_into_a_renamed_section_fails_the_kit(self):
         """The one defect `present-not-history` forbids that only eyes could catch.
@@ -2106,37 +2116,37 @@ class PortabilityGateTests(TempCase):
             target.read_text(encoding="utf-8").replace(
                 "## Two questions decide your behaviour — not the name of the device",
                 "## What decides your behaviour", 1), encoding="utf-8")
-        failures = []
-        check_kit.check_section_references(fake, lambda m, w="": failures.append(m))
-        self.assertTrue(any("cites a section" in m for m in failures), failures)
+        found = kitchecks.Report()
+        kitchecks.check_section_references(fake, found)
+        self.assertIn("cites a section", found)
 
     def test_a_pointer_at_a_missing_file_fails_the_kit(self):
         fake = Path(self.tmp.name) / "kit2"
         shutil.copytree(KIT_ROOT, fake, ignore=shutil.ignore_patterns(".git", "__pycache__"))
         (fake / "ARCHITECTURE.md").write_text(
             'See `rules/nonexistent.md` -> "Some Heading".\n', encoding="utf-8")
-        failures = []
-        check_kit.check_section_references(fake, lambda m, w="": failures.append(m))
-        self.assertTrue(any("does not exist" in m for m in failures), failures)
+        found = kitchecks.Report()
+        kitchecks.check_section_references(fake, found)
+        self.assertIn("does not exist", found)
 
     def test_every_pointer_the_kit_ships_resolves_today(self):
-        failures = []
-        check_kit.check_section_references(KIT_ROOT, lambda m, w="": failures.append(m))
-        self.assertEqual(failures, [])
+        found = kitchecks.Report()
+        kitchecks.check_section_references(KIT_ROOT, found)
+        self.assertEqual(len(found), 0)
 
     def test_a_path_listed_twice_in_one_section_fails_the_release(self):
         # Silent otherwise: the path count the update reports goes up, the work does not, and an
         # author adding an entry that is already there reads the higher number as it landing.
-        failures = []
-        check_kit.check_no_double_listing(["rules/", "README.md", "README.md"], [],
-                                          lambda m, w="": failures.append(m))
-        self.assertTrue(any("twice under engine" in m for m in failures), failures)
-        clean = []
-        check_kit.check_no_double_listing(
+        found = kitchecks.Report()
+        kitchecks.check_no_double_listing(["rules/", "README.md", "README.md"], [],
+                                          found)
+        self.assertIn("twice under engine", found)
+        clean = kitchecks.Report()
+        kitchecks.check_no_double_listing(
             list(manifest_lib.read_section("engine", KIT_ROOT)),
             list(manifest_lib.read_section("template", KIT_ROOT)),
-            lambda m, w="": clean.append(m))
-        self.assertEqual(clean, [])
+            clean)
+        self.assertEqual(len(clean), 0)
 
     def test_a_fork_that_kept_the_upstream_address_fails_the_release(self):
         """Fork the kit, forget `kit_remote:`, and every base you set up goes upstream.
@@ -2150,26 +2160,25 @@ class PortabilityGateTests(TempCase):
         subprocess.run(["git", "-C", str(fork), "init", "-q", "-b", "main"], check=True)
         subprocess.run(["git", "-C", str(fork), "remote", "add", "origin",
                         "https://github.com/someone/their-fork"], check=True)
-        failures = []
-        check_kit.check_kit_remote_is_this_repository(fork, lambda m, w="": failures.append(m))
-        self.assertTrue(any("kit_remote:" in m for m in failures), failures)
+        found = kitchecks.Report()
+        kitchecks.check_kit_remote_is_this_repository(fork, found)
+        self.assertIn("kit_remote:", found)
         # The kit itself declares its own address, so it passes.
-        clean = []
-        check_kit.check_kit_remote_is_this_repository(KIT_ROOT, lambda m, w="": clean.append(m))
-        self.assertEqual(clean, [])
+        clean = kitchecks.Report()
+        kitchecks.check_kit_remote_is_this_repository(KIT_ROOT, clean)
+        self.assertEqual(len(clean), 0)
 
     def test_a_shipped_tool_missing_from_the_catalogue_fails_the_release(self):
-        failures = []
+        found = kitchecks.Report()
         engine = list(manifest_lib.read_section("engine", KIT_ROOT)) + ["tools/nowhere.py"]
-        check_kit.check_kit_tools_are_catalogued(KIT_ROOT, engine,
-                                                 lambda m, w="": failures.append(m))
-        self.assertTrue(any("nowhere.py" in m for m in failures), failures)
+        kitchecks.check_kit_tools_are_catalogued(KIT_ROOT, engine, found)
+        self.assertIn("nowhere.py", found)
         # And the kit as it stands catalogues everything it ships.
-        clean = []
-        check_kit.check_kit_tools_are_catalogued(
+        clean = kitchecks.Report()
+        kitchecks.check_kit_tools_are_catalogued(
             KIT_ROOT, list(manifest_lib.read_section("engine", KIT_ROOT)),
-            lambda m, w="": clean.append(m))
-        self.assertEqual(clean, [])
+            clean)
+        self.assertEqual(len(clean), 0)
 
     def test_a_shell_tool_with_no_twin_fails_the_release(self):
         """[CP-4] The fault a content scanner cannot see.
@@ -2177,12 +2186,12 @@ class PortabilityGateTests(TempCase):
         Portable bash is still bash: PowerShell cannot run it, and reading the file will never
         say so — check_portability.py would report it clean.
         """
-        failures = []
-        check_kit.check_kit_tools_run_everywhere(
-            KIT_ROOT, ["tools/helper.sh"], lambda m, w="": failures.append(m))
-        self.assertTrue(any("helper.sh" in m for m in failures), failures)
+        found = kitchecks.Report()
+        kitchecks.check_kit_tools_run_everywhere(
+            KIT_ROOT, ["tools/helper.sh"], found)
+        self.assertIn("helper.sh", found)
         paired = []
-        check_kit.check_kit_tools_run_everywhere(
+        kitchecks.check_kit_tools_run_everywhere(
             KIT_ROOT, ["tools/helper.sh", "tools/helper.ps1"],
             lambda m, w="": paired.append(m))
         self.assertEqual(paired, [])

@@ -75,7 +75,7 @@ file the author never thought of as shipped. That failure is correct and is the 
 
 **Chosen:** the machine-checkable clauses of `rules/cross-platform.md` are named `[CP-1]`..`[CP-6]`
 in the prose, cited by every rule in `tools/lib/portability.py`, and bound in both directions by
-`check_clause_ids` in `check_kit.py`: a clause the canon defines that no mechanism enforces fails,
+`check_clause_ids` in `tools/lib/kitchecks.py`: a clause the canon defines that no mechanism enforces fails,
 and a gate rule citing a clause nobody wrote fails.
 
 **Alternatives considered:** citing section headings; citing section numbers; citing nothing and
