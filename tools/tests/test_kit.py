@@ -1862,6 +1862,65 @@ class ReleaseGateTests(TempCase):
         self.assertEqual(len(self.found), 1)
         self.assertIn("my-work-log.md", self.found)
 
+    def _released(self):
+        """A release on `main` and the work on a branch — the shape a release is measured in.
+
+        Commits made straight onto `main` leave `main..HEAD` empty, and a check over an empty
+        range passes without looking at anything.
+        """
+        write(self.root, "VERSION", "1.0.0\n")
+        init_repo(self.root)
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "release 1.0.0")
+        git(self.root, "switch", "-q", "-c", "work")
+
+    def test_a_commit_authored_by_an_assistant_fails_the_release(self):
+        """The rule existed and nothing held it, so only somebody reading git log stood in the way.
+
+        Authorship is the canonical attribution field of a public repository, and after a merge
+        it can be removed only by rewriting history — which needs the person's approval in the
+        moment and is refused on a shared branch. Cheap while it is still a branch.
+        """
+        self._released()
+        write(self.root, "later.md", "work\n")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "ordinary work",
+            "--author=Claude <noreply@anthropic.com>")
+        kitchecks.check_no_assistant_authorship(self.root, "main", self.found)
+        self.assertIn("assistant address", self.found)
+
+    def test_a_commit_committed_by_an_assistant_fails_the_release(self):
+        # Author and committer are separate fields and either one carries the mark into the log.
+        self._released()
+        write(self.root, "later.md", "work\n")
+        git(self.root, "add", "-A")
+        subprocess.run(["git", "-C", str(self.root),
+                        "-c", "user.name=Claude", "-c", "user.email=noreply@anthropic.com",
+                        "commit", "-qm", "ordinary work"], check=True)
+        kitchecks.check_no_assistant_authorship(self.root, "main", self.found)
+        self.assertIn("assistant address", self.found)
+
+    def test_an_assistant_mark_in_a_commit_message_fails_the_release(self):
+        self._released()
+        for mark in ("Co-Authored-By: Claude <noreply@anthropic.com>",
+                     "Generated with [Claude Code]"):
+            write(self.root, "later.md", mark)
+            git(self.root, "add", "-A")
+            git(self.root, "commit", "-qm", "ordinary work\n\n%s" % mark)
+        kitchecks.check_no_assistant_authorship(self.root, "main", self.found)
+        self.assertIn("in its message", self.found)
+        self.assertEqual(len(self.found), 2, list(self.found))
+
+    def test_ordinary_history_raises_no_authorship_alarm(self):
+        # The direction a false positive would ruin: a gate that fires on every release teaches
+        # its reader to skip the one line that matters.
+        self._released()
+        write(self.root, "later.md", "work\n")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "ordinary work")
+        kitchecks.check_no_assistant_authorship(self.root, "main", self.found)
+        self.assertEqual(len(self.found), 0, list(self.found))
+
     def test_a_release_that_does_not_move_version_fails(self):
         """The last check body nothing covered, and its failure is invisible by construction.
 

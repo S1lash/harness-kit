@@ -201,7 +201,7 @@ those visible **here**, rather than on a machine nobody can see:
 | Gate | Catches | Would otherwise surface as |
 |---|---|---|
 | `check_kit.py` (any base) | a rule missing from the list; a declared path that is not there; a retirement that contradicts itself; a clause nothing enforces; a pointer into a section that moved — and the portability scan, which it runs itself | a rule silently not in force; a citation aimed at the wrong paragraph |
-| `check_kit.py --authoring` | what only the kit's own repository can know: a removal with no `retired:`; a tool declared nowhere or absent from `tools/_kit.md`; a version that did not move; a seed already shipped being edited; the person's space shipping non-empty; a shell tool with no twin; a fork pointing at upstream | somebody else's base, days later |
+| `check_kit.py --authoring` | what only the kit's own repository can know: a removal with no `retired:`; a tool declared nowhere or absent from `tools/_kit.md`; a version that did not move; a seed already shipped being edited; the person's space shipping non-empty; a shell tool with no twin; a fork pointing at upstream; a commit marked as written by an assistant | somebody else's base, days later — or, for the last one, a permanent line in a public history |
 | `check_portability.py` | CP-1, CP-2, CP-3, CP-5, CP-6 over everything that ships. CP-4 is not expressible as a pattern over one file, so the tests and `check_kit.py` carry it | "it doesn't work on my machine" |
 | `tools/tests/` | the machinery itself — including what a read can prove about `install.ps1` | a lost save, or an update that silently applies nothing |
 | `/harness-doctor` | the state of one base, report-only | drift nobody looks for |

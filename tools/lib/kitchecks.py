@@ -26,6 +26,17 @@ from . import portability
 RELEASE_REF = "main"
 PLUGIN_MANIFEST = ".claude-plugin/plugin.json"
 
+# What an assistant-authorship mark looks like in git history. The address is the unambiguous
+# one: a person may legitimately be named Claude, but nobody commits from a vendor's noreply
+# address by hand. The message marks are the ones tools append on their own.
+ASSISTANT_ADDRESS = "anthropic.com"
+ASSISTANT_MESSAGE_MARKS = (
+    "Co-Authored-By: Claude",
+    "noreply@anthropic.com",
+    "Generated with [Claude Code]",
+    "\U0001f916 Generated with",
+)
+
 
 class Failure(NamedTuple):
     """One thing that is wrong, in the shape the report prints and the tests read.
@@ -326,6 +337,49 @@ def check_kit_tools_run_everywhere(root, engine, fail):
                  "Write it in python, or ship %s beside it and keep the two in lockstep." % twin)
 
 
+def check_no_assistant_authorship(root, ref, fail):
+    """A release may not carry a commit marked as written by an assistant.
+
+    `rules/communication.md` forbids the mark "anywhere … or any artifact", and git authorship is
+    the canonical attribution field of a public repository. The rule existed and nothing held it,
+    so the only thing standing between it and a permanent line in the history was somebody
+    reading `git log` — and after a merge it can be removed only by rewriting history, which
+    `rules/git-safety.md` forbids without the person's approval in the moment. Cheap to fix
+    while a branch is still a branch; impossible afterwards.
+
+    Scoped to what this release ADDS. History already merged is history, and a gate that fails
+    every run over something nobody may rewrite teaches its reader to ignore it.
+    """
+    if git("rev-parse", "--verify", "--quiet", ref, root=root).code != 0:
+        fail.note("skipped the authorship check — %s is not available here" % ref)
+        return
+    span = "%s..HEAD" % ref
+    listing = git("log", span, "--format=%h%x09%ae%x09%ce", root=root)
+    if listing.code != 0:
+        return
+    for line in listing.out.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 3:
+            continue
+        commit, author, committer = parts
+        if ASSISTANT_ADDRESS in author.lower() or ASSISTANT_ADDRESS in committer.lower():
+            fail(commit, "is authored by an assistant address (%s)" % (author or committer),
+                 "Restamp it before this merges — afterwards it is history nobody may rewrite.")
+    # Gathered per commit rather than per mark: one message often carries several, and three
+    # lines about one commit read as three problems.
+    marked = {}
+    for mark in ASSISTANT_MESSAGE_MARKS:
+        found = git("log", span, "--fixed-strings", "--regexp-ignore-case",
+                    "--grep", mark, "--format=%h", root=root)
+        if found.code != 0:
+            continue
+        for commit in found.out.split():
+            marked.setdefault(commit, []).append(mark)
+    for commit, marks in marked.items():
+        fail(commit, "has %s in its message" % ", ".join(repr(m) for m in marks),
+             "Rewrite the message before this merges; afterwards it cannot be removed.")
+
+
 def check_version_moved(root, engine, ref, fail):
     """A release that changes the kit without moving VERSION is invisible to everyone."""
     result = git("rev-parse", "--verify", "--quiet", ref, root=root)
@@ -506,5 +560,6 @@ def run(root: Path, since: str = RELEASE_REF, authoring: bool = False):
         check_removals_retired(root, engine, retired, since, report)
         check_version_moved(root, engine, since, report)
         check_kit_remote_is_this_repository(root, report)
+        check_no_assistant_authorship(root, since, report)
 
     return report, (len(engine), len(template), len(retired))

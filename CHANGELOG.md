@@ -65,6 +65,13 @@ present; evolution is logged here.
   current" on every base, so nobody is ever told a new version exists.
 - The frozen-seed check says when it skipped itself. Silence there was indistinguishable from the
   check running and passing.
+- The release gate refuses a commit marked as written by an assistant — the author or committer
+  address, or the marks a tool appends to a message. `rules/communication.md` forbids the mark
+  "anywhere … or any artifact" and git authorship is the canonical attribution field of a public
+  repository, yet nothing held the rule: only somebody reading `git log` stood between it and a
+  permanent line. It is scoped to what a release ADDS, because history already merged may be
+  rewritten only with the person's approval in the moment, and a gate that fails every run over
+  something nobody may change teaches its reader to skip it.
 
 ## 2026-08-30
 
