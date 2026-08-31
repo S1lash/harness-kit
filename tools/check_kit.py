@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -40,13 +39,8 @@ def git(*args, root: Path):
     return done.returncode, done.stdout.rstrip("\n")
 
 
-def files_under(root: Path, entry: str) -> set:
-    """Concrete repo-relative files one manifest entry covers, right now, on disk."""
-    target = root / entry.rstrip("/")
-    if target.is_dir():
-        return {str(p.relative_to(root)).replace(os.sep, "/")
-                for p in target.rglob("*") if p.is_file()}
-    return {entry} if target.is_file() else set()
+files_under = manifest_lib.files_under
+
 
 
 def check_paths_exist(root, engine, template, fail):
@@ -92,8 +86,7 @@ def check_kit_remote_is_this_repository(root, fail):
     code, actual = git("remote", "get-url", "origin", root=root)
     if code != 0 or not actual.strip():
         return  # no origin to compare against; nothing can be concluded
-    normalise = lambda url: url.strip().rstrip("/").removesuffix(".git").lower()
-    if normalise(declared) != normalise(actual):
+    if not manifest_lib.same_repository(declared, actual):
         fail("kit_remote: names %s but this repository's origin is %s" % (declared, actual.strip()),
              "If you forked the kit, point kit_remote: at YOUR clone — otherwise every base you "
              "set up is reconciled back to upstream on its first update.")
@@ -225,7 +218,7 @@ def check_tools_classified(root, engine, template, exclude, fail):
     rather than wholesale. The cost of that safety is that a new kit tool is invisible until it is
     named — it simply never ships, and no base ever reports a problem.
     """
-    declared = [e for e in engine + template + exclude]
+    declared = engine + template + exclude
     for path in sorted((root / "tools").glob("*")):
         relpath = "tools/%s" % path.name
         # Generated output is not a tool. Ask git rather than guessing by name — a guess that

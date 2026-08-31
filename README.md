@@ -22,7 +22,7 @@ first minute: an operating standard, not a folder template.
 1. **Clone it into a folder you name** — pick a place and a name you'll recognize; you'll
    launch your AI agent from there.
    ```bash
-   git clone <this-repo-url> harness    # name it whatever you like
+   git clone https://github.com/S1lash/harness-kit harness   # name it whatever you like
    ```
    On Windows, open a terminal (PowerShell) and run it from there, so the window stays open and
    you can read what it says.
@@ -32,6 +32,10 @@ first minute: an operating standard, not a folder template.
 
 From then on it is one base: everything you build lives inside it, and the agent keeps your
 computer and your phone showing the same thing — it saves as you go and asks before it does.
+
+**On the phone**, open the same base from the Claude app or claude.ai/code and point it at the
+private place set up in step 2. There is nothing else to install: the base carries its own wiring,
+so an agent that can see the repository is already set up.
 
 That's the whole onboarding. You don't need to understand the structure below — the agent
 does.

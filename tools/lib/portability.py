@@ -77,14 +77,13 @@ class Rule:
     rules, because a path is a string literal and nothing else.
     """
 
-    def __init__(self, clause, scope, pattern, why, instead, kind="line",
+    def __init__(self, clause, scope, pattern, why, instead,
                  strings=False, matcher=None):
         self.clause = clause
         self.scope = scope
         self.pattern = re.compile(pattern) if pattern else None
         self.why = why
         self.instead = instead
-        self.kind = kind
         self.strings = strings
         self.matcher = matcher
 
@@ -205,11 +204,11 @@ LINE_RULES = (
 FILE_RULES = (
     Rule("CP-3", "any", None,
          "CRLF line endings; bash and python from a Windows checkout break on them",
-         "LF, which `.gitattributes` enforces", kind="file"),
+         "LF, which `.gitattributes` enforces"),
     Rule("CP-5", "powershell", None,
          "non-ASCII in a .ps1 with no byte-order mark; Windows PowerShell 5.1 then parses its "
          "own literals through the ANSI code page",
-         "save the file as UTF-8 with a BOM", kind="file"),
+         "save the file as UTF-8 with a BOM"),
 )
 
 # The helper that makes a native call safe, and the existence check that is not a call at all.

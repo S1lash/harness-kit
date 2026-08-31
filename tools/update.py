@@ -99,14 +99,6 @@ def fail(message: str, *followups: str) -> int:
     return 2
 
 
-def same_repository(a: str, b: str) -> bool:
-    """Two URLs naming the same repository. Mirror of `same_repo` in install.sh."""
-    if not a or not b:
-        return False
-    normalise = lambda url: url.strip().rstrip("/").removesuffix(".git").lower()
-    return normalise(a) == normalise(b)
-
-
 def resolve_remote(remote: str, root: Path):
     """(name, url) of the remote this base updates from — found by ADDRESS, then by name.
 
@@ -123,7 +115,7 @@ def resolve_remote(remote: str, root: Path):
     if declared:
         for name in (git_ok("remote", root=root) or "").split():
             url = git_ok("remote", "get-url", name, root=root)
-            if same_repository(url, declared):
+            if manifest_lib.same_repository(url, declared):
                 return name, url
     url = git_ok("remote", "get-url", remote, root=root)
     return (remote, url) if url else (remote, None)
@@ -297,6 +289,93 @@ def enclosing_repository(root: Path):
     return None if Path(toplevel).resolve() == root.resolve() else toplevel
 
 
+def preview(root: Path, ref: str, engine_paths: list, incoming: dict,
+            protected_before: list, version_before: str, version_upstream: str) -> int:
+    """What an update WOULD do, said in the terms the real run uses.
+
+    Extracted from `mode_apply`, where it was a second program inside the first — its own
+    output vocabulary, its own refusal handling and its own early return, reachable only by
+    spawning the script against a configured remote.
+    """
+    print("%s dry-run — would replace these from %s:" % (PREFIX, ref))
+    for relpath in sorted(set(engine_paths) | set(incoming["engine"])):
+        if not ref_has_path(ref, relpath, root):
+            continue
+        # `-R` reverses the direction: without it this reads ref -> here,
+        # so everything the update ADDS renders as a deletion.
+        stat = git_ok("diff", "--stat", "-R", ref, "--", relpath, root=root)
+        print("  - %s%s" % (relpath, "" if not stat else "\n      " + stat.replace("\n", "\n      ")))
+    for relpath in incoming["template"]:
+        if not (root / relpath).exists() and ref_has_path(ref, relpath, root):
+            print("  + add %s (a seed this base never received)" % relpath)
+    # The guards inside these two read `engine:`/`exclude:` from the manifest on disk, which
+    # a real run reads only AFTER the replacement. A release that moves a path between
+    # sections and migrates or retires under it in the same release would therefore preview
+    # against one manifest and apply against another; a refusal is reported as a refusal
+    # rather than crashing the preview.
+    try:
+        for move in migrate_lib.run(root, dry_run=True, entries=incoming["migrations"]):
+            print("  > move %s to %s" % (move.source, move.destination))
+    except migrate_lib.MigrationRefused as refusal:
+        print("  ! a declared move cannot be previewed from this base yet: %s" % refusal)
+    try:
+        removed = retire_lib.run(
+            root, dry_run=True, entries=incoming["retired"],
+            protected=sorted(set(protected_before) | set(incoming["exclude"])))
+    except retire_lib.RetirementRefused as refusal:
+        print("  ! a declared removal names paths this base calls its own: %s"
+              % ", ".join(refusal.trespassing))
+        removed = []
+    for relpath in removed:
+        print("  - drop %s (the kit no longer has it)" % relpath)
+    print("%s dry-run: %s -> %s. Nothing applied." % (PREFIX, version_before or "?",
+                                                      version_upstream or "?"))
+    return 0
+
+
+
+def report(root: Path, remote: str, resolved: int, changed: int, absent: int,
+           changed_paths: list, added_paths: list, seeded: list, removed: list,
+           carried: list, version_before: str, version_after: str) -> int:
+    """Say what happened, path by path, and what the agent must do with it.
+
+    An overwrite the person cannot see is one they cannot object to, so this names every
+    path rather than a count. Extracted for the same reason as `preview`: reporting is a
+    different job from deciding.
+    """
+    moved_address = reconcile_kit_remote(root, remote)
+    print("%s %d kit path(s) checked, %d changed, %d absent, %d added, %d dropped — %s -> %s"
+          % (PREFIX, resolved, changed, absent, len(seeded), len(removed),
+             version_before or "?", version_after or "?"))
+    # Name every path, never just a count: an overwrite the person cannot see is one they cannot
+    # object to, and `.claude/settings.json` is a kit path they may well have edited.
+    for relpath in changed_paths:
+        print("  ~ replaced %s" % relpath)
+    for relpath in added_paths:
+        print("  ~ replaced %s (a kit path this release introduced)" % relpath)
+    for relpath in seeded:
+        print("  + added %s (a seed this base never received)" % relpath)
+    for relpath in removed:
+        print("  - dropped %s" % relpath)
+    for move in carried:
+        print("  > moved %s to %s%s"
+              % (move.source, move.destination, " — %s" % move.note if move.note else ""))
+    if moved_address:
+        print("  = the kit now lives at %s; this base follows it from the next update"
+              % moved_address)
+    for entry in stale_global_wiring(root):
+        print("  ! %s still points somewhere else — that runtime is not reading this base" % entry)
+    if not changed and not removed and not seeded and not carried:
+        print("YOU MUST: nothing arrived — the base was already current. Say so in one short "
+              "line only if the person asked; otherwise say nothing.")
+        return 0
+    print("YOU MUST: read CHANGELOG.md for what landed between those two versions, tell the "
+          "person in one or two plain sentences what it means for THEM — not what changed in "
+          "the kit — and save (python3 tools/sync.py save \"...\"). If none of it touches how "
+          "they work, say that plainly and save anyway.")
+    return 0
+
+
 def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
                confirmed: bool = False) -> int:
     enclosing = enclosing_repository(root)
@@ -363,40 +442,8 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
 
 
     if dry_run:
-        print("%s dry-run — would replace these from %s:" % (PREFIX, ref))
-        for relpath in sorted(set(engine_paths) | set(incoming["engine"])):
-            if not ref_has_path(ref, relpath, root):
-                continue
-            # `-R` reverses the direction: without it this reads ref -> here,
-            # so everything the update ADDS renders as a deletion.
-            stat = git_ok("diff", "--stat", "-R", ref, "--", relpath, root=root)
-            print("  - %s%s" % (relpath, "" if not stat else "\n      " + stat.replace("\n", "\n      ")))
-        for relpath in incoming["template"]:
-            if not (root / relpath).exists() and ref_has_path(ref, relpath, root):
-                print("  + add %s (a seed this base never received)" % relpath)
-        # The guards inside these two read `engine:`/`exclude:` from the manifest on disk, which
-        # a real run reads only AFTER the replacement. A release that moves a path between
-        # sections and migrates or retires under it in the same release would therefore preview
-        # against one manifest and apply against another; a refusal is reported as a refusal
-        # rather than crashing the preview.
-        try:
-            for move in migrate_lib.run(root, dry_run=True, entries=incoming["migrations"]):
-                print("  > move %s to %s" % (move.source, move.destination))
-        except migrate_lib.MigrationRefused as refusal:
-            print("  ! a declared move cannot be previewed from this base yet: %s" % refusal)
-        try:
-            removed = retire_lib.run(
-                root, dry_run=True, entries=incoming["retired"],
-                protected=sorted(set(protected_before) | set(incoming["exclude"])))
-        except retire_lib.RetirementRefused as refusal:
-            print("  ! a declared removal names paths this base calls its own: %s"
-                  % ", ".join(refusal.trespassing))
-            removed = []
-        for relpath in removed:
-            print("  - drop %s (the kit no longer has it)" % relpath)
-        print("%s dry-run: %s -> %s. Nothing applied." % (PREFIX, version_before or "?",
-                                                          version_upstream or "?"))
-        return 0
+        return preview(root, ref, engine_paths, incoming,
+                       protected_before, version_before, version_upstream)
 
     seeded = seed_missing_templates(root, ref, incoming["template"])
     resolved, absent, changed = 0, 0, 0
@@ -405,14 +452,13 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
     # A path this release ADDS to engine: is not in the list read from the manifest that was on
     # disk when the run began — that manifest is itself one of the paths being replaced. Without
     # this the new file lands one whole update late, and the run that ships it says nothing.
-    newly_declared = adopted
-    for relpath in engine_paths + newly_declared:
+    for relpath in engine_paths + adopted:
         if not ref_has_path(ref, relpath, root):
             absent += 1
             continue
         if git("diff", "--quiet", ref, "--", relpath, root=root)[0] != 0:
             changed += 1
-            (added_paths if relpath in newly_declared else changed_paths).append(relpath)
+            (added_paths if relpath in adopted else changed_paths).append(relpath)
         git("checkout", ref, "--", relpath, root=root)
         resolved += 1
 
@@ -422,7 +468,7 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
     if resolved == 0:
         return fail(
             "not one of the %d kit paths was found in %s."
-            % (len(engine_paths) + len(newly_declared), ref),
+            % (len(engine_paths) + len(adopted), ref),
             "That is never the shape of an up-to-date base — the kit would have to have",
             "deleted itself. Something mangled the paths before git saw them.",
             "Recover with: python3 tools/update.py --self-heal",
@@ -487,37 +533,8 @@ def mode_apply(root: Path, remote: str, branch: str, dry_run: bool,
             "inspect with: git status",
         )
 
-    moved_address = reconcile_kit_remote(root, remote)
-    print("%s %d kit path(s) checked, %d changed, %d absent, %d added, %d dropped — %s -> %s"
-          % (PREFIX, resolved, changed, absent, len(seeded), len(removed),
-             version_before or "?", version_after or "?"))
-    # Name every path, never just a count: an overwrite the person cannot see is one they cannot
-    # object to, and `.claude/settings.json` is a kit path they may well have edited.
-    for relpath in changed_paths:
-        print("  ~ replaced %s" % relpath)
-    for relpath in added_paths:
-        print("  ~ replaced %s (a kit path this release introduced)" % relpath)
-    for relpath in seeded:
-        print("  + added %s (a seed this base never received)" % relpath)
-    for relpath in removed:
-        print("  - dropped %s" % relpath)
-    for move in carried:
-        print("  > moved %s to %s%s"
-              % (move.source, move.destination, " — %s" % move.note if move.note else ""))
-    if moved_address:
-        print("  = the kit now lives at %s; this base follows it from the next update"
-              % moved_address)
-    for entry in stale_global_wiring(root):
-        print("  ! %s still points somewhere else — that runtime is not reading this base" % entry)
-    if not changed and not removed and not seeded and not carried:
-        print("YOU MUST: nothing arrived — the base was already current. Say so in one short "
-              "line only if the person asked; otherwise say nothing.")
-        return 0
-    print("YOU MUST: read CHANGELOG.md for what landed between those two versions, tell the "
-          "person in one or two plain sentences what it means for THEM — not what changed in "
-          "the kit — and save (python3 tools/sync.py save \"...\"). If none of it touches how "
-          "they work, say that plainly and save anyway.")
-    return 0
+    return report(root, remote, resolved, changed, absent, changed_paths, added_paths,
+                  seeded, removed, carried, version_before, version_after)
 
 
 def main(argv: list) -> int:

@@ -697,10 +697,10 @@ class UpdateEndToEndTests(unittest.TestCase):
         for a, b in (("https://h/o/kit", "https://h/o/kit.git"),
                      ("https://h/o/kit/", "https://h/o/kit"),
                      ("https://H/O/Kit", "https://h/o/kit")):
-            self.assertTrue(update_module.same_repository(a, b), "%s vs %s" % (a, b))
+            self.assertTrue(manifest_lib.same_repository(a, b), "%s vs %s" % (a, b))
         for a, b in (("https://h/o/kit", "https://h/o/other"),
                      ("https://h/o/kit", ""), ("", "")):
-            self.assertFalse(update_module.same_repository(a, b), "%s vs %s" % (a, b))
+            self.assertFalse(manifest_lib.same_repository(a, b), "%s vs %s" % (a, b))
 
     def test_the_persons_own_copy_is_never_mistaken_for_the_kit(self):
         """Every base has two remotes, and one of them is the person's private copy.
@@ -777,7 +777,6 @@ class UpdateEndToEndTests(unittest.TestCase):
         Nothing re-runs the installer, so a base that moved keeps a block pointing at where it
         used to be, and the canon then reaches that runtime from the wrong place or not at all.
         """
-        import update as updater
         home = Path(self.tmp.name) / "fake-home"
         (home / ".claude").mkdir(parents=True)
         entry = home / ".claude" / "CLAUDE.md"
@@ -787,15 +786,15 @@ class UpdateEndToEndTests(unittest.TestCase):
                          encoding="utf-8")
         Path.home = staticmethod(lambda: home)
         self.addCleanup(setattr, Path, "home", original)
-        self.assertEqual(updater.stale_global_wiring(self.base), [str(entry)])
+        self.assertEqual(update_module.stale_global_wiring(self.base), [str(entry)])
 
         # Naming this base — by import or by plain path — is not stale.
         entry.write_text("<!-- BEGIN HARNESS-KIT -->\n@%s/AGENTS.md\n" % self.base,
                          encoding="utf-8")
-        self.assertEqual(updater.stale_global_wiring(self.base), [])
+        self.assertEqual(update_module.stale_global_wiring(self.base), [])
         # An entry this kit never wrote is none of its business.
         entry.write_text("something the person wrote themselves\n", encoding="utf-8")
-        self.assertEqual(updater.stale_global_wiring(self.base), [])
+        self.assertEqual(update_module.stale_global_wiring(self.base), [])
 
     def test_a_dry_run_reports_a_refusal_instead_of_crashing(self):
         """A preview that raises tells the person nothing about what an update would do.

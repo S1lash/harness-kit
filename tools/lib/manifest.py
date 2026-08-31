@@ -173,6 +173,30 @@ def covers(entries, relpath: str) -> bool:
     return any(covered_by(entry, shape) for entry in entries for shape in shapes)
 
 
+def same_repository(a: str, b: str) -> bool:
+    """Two URLs naming the same repository. Mirror of `same_repo` in install.sh.
+
+    Lives beside `read_kit_remote` because it is a fact about kit addresses. It had two identical
+    copies — one deciding which remote the updater fetches from, one deciding whether a release
+    is a fork that kept the upstream address. The gate's whole job is to predict what the updater
+    will do, so a rule gained by one and not the other passes a fork whose bases are then pulled
+    back upstream.
+    """
+    if not a or not b:
+        return False
+    normalise = lambda url: url.strip().rstrip("/").removesuffix(".git").lower()
+    return normalise(a) == normalise(b)
+
+
+def files_under(root: Path, entry: str) -> set:
+    """Repo-relative POSIX paths one manifest directory entry covers, right now, on disk."""
+    target = root / entry.rstrip("/")
+    if target.is_dir():
+        return {str(p.relative_to(root)).replace("\\", "/")
+                for p in target.rglob("*") if p.is_file()}
+    return {entry.rstrip("/")} if target.is_file() else set()
+
+
 def read_kit_remote(root: Path | None = None) -> str:
     """The kit's own address, so a base that lost the remote is reconnected without guessing."""
     match = _KIT_REMOTE.search(manifest_text(root))

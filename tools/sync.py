@@ -251,7 +251,10 @@ def directive_for(state):
         return ("tell the person their base lives only on this machine, so their phone and other "
                 "computers cannot see any of it, and offer to fix that")
     if not state["identity"]:
-        return "ask the person for the name and email to save under, then set them for this base"
+        return ("this base has no name to save under, so nothing can be recorded. If the person "
+                "is there, ask for a name and email; if nobody is — an unattended run — take "
+                "them from profile.md or the environment and set them yourself rather than "
+                "waiting (rules/device-sync.md: with nobody to ask you decide)")
     if state["untracked_branch"] and (state["ahead"] or state["behind"]):
         return ("the base is out of step AND this branch is not linked to the remote, so nothing "
                 "will notice on its own next time. Link it (git branch --set-upstream-to=%s), "
