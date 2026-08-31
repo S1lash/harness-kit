@@ -88,11 +88,59 @@ def install_tools(root: Path):
     shutil.copytree(KIT_ROOT / "tools" / "lib", root / "tools" / "lib", dirs_exist_ok=True)
 
 
+def run_tool(base: Path, tool: str, *args, cwd: Path = None, env: dict = None):
+    """Run one of the kit's tools out of a base, the way a session runs it."""
+    return subprocess.run([sys.executable, str(base / "tools" / tool), *args],
+                          capture_output=True, text=True, env=env,
+                          cwd=None if cwd is None else str(cwd))
+
+
+def kit_text(relpath: str) -> str:
+    """Read a file of this kit as text. UTF-8 is stated because Windows would not assume it."""
+    return (KIT_ROOT / relpath).read_text(encoding="utf-8")
+
+
+def run_installer(source: Path, home: Path, answers: str, cwd: Path):
+    """Run `install.sh` against a throwaway HOME, with the answers fed on stdin.
+
+    `HARNESS_ANSWERS_ON_STDIN` is not decoration: without it the installer refuses piped
+    answers, because a question that quietly took a default is indistinguishable in the
+    output from one somebody actually answered.
+    """
+    return subprocess.run(["bash", str(source / "install.sh")], input=answers,
+                          capture_output=True, text=True, cwd=str(cwd),
+                          env={**os.environ, "HOME": str(home),
+                               "HARNESS_ANSWERS_ON_STDIN": "1"})
+
+
+def path_with(directory: Path) -> dict:
+    """This environment, with one directory put ahead of PATH.
+
+    The kit shells out to `git` and `gh`; a stub in front of PATH is how a test drives what
+    those answer without a network.
+    """
+    return {**os.environ, "PATH": "%s%s%s" % (directory, os.pathsep, os.environ.get("PATH", ""))}
+
+
 def run_update(base: Path, *args):
-    return subprocess.run(
-        [sys.executable, str(base / "tools" / "update.py"), "--branch", "main", *args],
-        capture_output=True, text=True,
-    )
+    return run_tool(base, "update.py", "--branch", "main", *args)
+
+
+def bare_remote(path: Path) -> Path:
+    """A remote the way every surface expects one: HEAD already on `main`.
+
+    A bare repository takes HEAD from whatever `init.defaultBranch` happens to be, so a clone
+    of one can land on `master` while the base pushes `main`. The two surfaces then never share
+    a branch, and a test about them diverging passes without the divergence ever happening.
+    """
+    subprocess.run(["git", "init", "-q", "--bare", str(path)], check=True)
+    subprocess.run(["git", "-C", str(path), "symbolic-ref", "HEAD", "refs/heads/main"], check=True)
+    return path
+
+
+def clone(remote: Path, path: Path) -> Path:
+    subprocess.run(["git", "clone", "-q", str(remote), str(path)], check=True)
+    return path
 
 
 class ManifestReaderTests(TempCase):
@@ -133,8 +181,7 @@ class SilentDivergenceTests(TempCase):
         git(self.base, "init", "-q", "-b", "main")
 
     def run_sync(self, *args):
-        return subprocess.run([sys.executable, str(self.base / "tools" / "sync.py"), *args],
-                              capture_output=True, text=True, cwd=str(self.base))
+        return run_tool(self.base, "sync.py", *args, cwd=self.base)
 
     def test_a_project_that_is_its_own_repository_is_named(self):
         """A gitlink records a commit id and no content, so a clone gets an empty folder.
@@ -151,7 +198,7 @@ class SilentDivergenceTests(TempCase):
         # A base with no remote has a louder problem, and its directive correctly wins. Give it
         # one so the nested-repository directive is the one under test.
         remote = Path(self.tmp.name) / "their-remote.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        bare_remote(remote)
         git(self.base, "add", "-A")
         git(self.base, "commit", "-qm", "their base")
         git(self.base, "remote", "add", "origin", str(remote))
@@ -174,9 +221,7 @@ class SilentDivergenceTests(TempCase):
         agent remembering. This is the floor under that, not a replacement for it.
         """
         remote = Path(self.tmp.name) / "end.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
-        subprocess.run(["git", "-C", str(remote), "symbolic-ref", "HEAD", "refs/heads/main"],
-                       check=True)
+        bare_remote(remote)
         write(self.base, "seed.md", "x\n")
         git(self.base, "add", "-A")
         git(self.base, "commit", "-qm", "start")
@@ -188,7 +233,7 @@ class SilentDivergenceTests(TempCase):
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
 
         elsewhere = Path(self.tmp.name) / "elsewhere"
-        subprocess.run(["git", "clone", "-q", str(remote), str(elsewhere)], check=True)
+        clone(remote, elsewhere)
         self.assertTrue((elsewhere / "knowledge" / "from-the-phone.md").exists(),
                         "the session ended and the work never left the machine")
 
@@ -213,12 +258,7 @@ class SilentDivergenceTests(TempCase):
         and a read-only session never self-corrects because nothing pushes to be refused.
         """
         remote = Path(self.tmp.name) / "shared.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
-        # A bare repo defaults HEAD to `master`, so a clone of it lands there and the second
-        # surface's commit never reaches `main` at all — the divergence under test would not
-        # happen, and the test would pass for the wrong reason.
-        subprocess.run(["git", "-C", str(remote), "symbolic-ref", "HEAD", "refs/heads/main"],
-                       check=True)
+        bare_remote(remote)
         write(self.base, "f.md", "v1\n")
         git(self.base, "add", "-A")
         git(self.base, "commit", "-qm", "one")
@@ -226,7 +266,7 @@ class SilentDivergenceTests(TempCase):
         git(self.base, "push", "-q", "-u", "origin", "main")
 
         other = Path(self.tmp.name) / "other"
-        subprocess.run(["git", "clone", "-q", str(remote), str(other)], check=True)
+        clone(remote, other)
         self.assertEqual(
             subprocess.run(["git", "-C", str(other), "rev-parse", "--abbrev-ref", "HEAD"],
                            capture_output=True, text=True).stdout.strip(), "main",
@@ -260,20 +300,16 @@ class SilentDivergenceTests(TempCase):
         gh.write_text("#!/bin/sh\necho public\n", encoding="utf-8")
         gh.chmod(0o755)
         remote = Path(self.tmp.name) / "their-remote.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        bare_remote(remote)
         git(self.base, "remote", "add", "origin", str(remote))
 
-        done = subprocess.run(
-            [sys.executable, str(self.base / "tools" / "sync.py"), "status"],
-            capture_output=True, text=True, cwd=str(self.base),
-            env={**os.environ, "PATH": "%s:%s" % (fake_bin, os.environ.get("PATH", ""))})
+        done = run_tool(self.base, "sync.py", "status",
+                        cwd=self.base, env=path_with(fake_bin))
         self.assertIn("PUBLIC", done.stdout)
         self.assertIn("readable by anyone", done.stdout)
 
-        saving = subprocess.run(
-            [sys.executable, str(self.base / "tools" / "sync.py"), "save", "anything"],
-            capture_output=True, text=True, cwd=str(self.base),
-            env={**os.environ, "PATH": "%s:%s" % (fake_bin, os.environ.get("PATH", ""))})
+        saving = run_tool(self.base, "sync.py", "save", "anything",
+                          cwd=self.base, env=path_with(fake_bin))
         self.assertNotEqual(saving.returncode, 0, "it saved to a public remote")
 
     def test_a_private_remote_raises_no_alarm(self):
@@ -285,18 +321,16 @@ class SilentDivergenceTests(TempCase):
         gh.write_text("#!/bin/sh\necho private\n", encoding="utf-8")
         gh.chmod(0o755)
         remote = Path(self.tmp.name) / "private.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        bare_remote(remote)
         git(self.base, "remote", "add", "origin", str(remote))
-        done = subprocess.run(
-            [sys.executable, str(self.base / "tools" / "sync.py"), "status"],
-            capture_output=True, text=True, cwd=str(self.base),
-            env={**os.environ, "PATH": "%s:%s" % (fake_bin, os.environ.get("PATH", ""))})
+        done = run_tool(self.base, "sync.py", "status",
+                        cwd=self.base, env=path_with(fake_bin))
         self.assertNotIn("PUBLIC", done.stdout)
 
     def test_a_visibility_that_cannot_be_established_is_not_called_public(self):
         # Unknown is not a finding: `gh` absent or signed out must not produce a false alarm.
         remote = Path(self.tmp.name) / "quiet.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        bare_remote(remote)
         git(self.base, "remote", "add", "origin", str(remote))
         done = self.run_sync("status")
         self.assertNotIn("PUBLIC", done.stdout)
@@ -335,12 +369,7 @@ class InstallerSafetyTests(TempCase):
         self.home.mkdir()
 
     def install(self, answers):
-        done = subprocess.run(["bash", str(self.source() / "install.sh")],
-                              input=answers, capture_output=True, text=True,
-                              cwd=str(self.tmp.name),
-                              env={**os.environ, "HOME": str(self.home),
-                                   "HARNESS_ANSWERS_ON_STDIN": "1"})
-        return done
+        return run_installer(self.source(), self.home, answers, cwd=self.tmpdir)
 
     def test_an_ordinary_projects_folder_is_left_alone(self):
         # The trigger is a marker an old harness leaves, never the folder's name.
@@ -407,12 +436,10 @@ class InstallerSafetyTests(TempCase):
         nested.mkdir(parents=True)
         (nested / "main.py").write_text("print('hi')\n", encoding="utf-8")
         subprocess.run(["git", "-C", str(nested), "init", "-q"], check=True)
-        done = subprocess.run(["bash", str(source / "install.sh")],
-                              input="%s\nharness\nEnglish\nn\nn\nn\nn\nElena\ne@example.invalid\nn\n"
-                                    % self.home,
-                              capture_output=True, text=True, cwd=str(self.tmp.name),
-                              env={**os.environ, "HOME": str(self.home),
-                                   "HARNESS_ANSWERS_ON_STDIN": "1"})
+        done = run_installer(
+            source, self.home,
+            "%s\nharness\nEnglish\nn\nn\nn\nn\nElena\ne@example.invalid\nn\n" % self.home,
+            cwd=self.tmpdir)
         base = self.home / "harness"
         head = subprocess.run(["git", "-C", str(base), "log", "-1", "--format=%H"],
                               capture_output=True, text=True).stdout.strip()
@@ -451,8 +478,7 @@ class EnclosingRepositoryTests(TempCase):
         shutil.copy2(KIT_ROOT / "tools" / "sync.py", self.base / "tools")
 
     def run_sync(self, *args):
-        return subprocess.run([sys.executable, str(self.base / "tools" / "sync.py"), *args],
-                              capture_output=True, text=True, cwd=str(self.base))
+        return run_tool(self.base, "sync.py", *args, cwd=self.base)
 
     def test_saving_refuses_and_names_the_repository_it_would_have_written_to(self):
         done = self.run_sync("save", "write down what we decided")
@@ -474,8 +500,7 @@ class EnclosingRepositoryTests(TempCase):
         self.assertNotIn("NOT ITS OWN", done.stdout)
 
     def test_the_updater_refuses_too(self):
-        done = subprocess.run([sys.executable, str(self.base / "tools" / "update.py"), "--dry-run"],
-                              capture_output=True, text=True, cwd=str(self.base))
+        done = run_tool(self.base, "update.py", "--dry-run", cwd=self.base)
         self.assertNotEqual(done.returncode, 0)
         self.assertIn("no history of its own", done.stdout + done.stderr)
 
@@ -556,8 +581,7 @@ class ContainmentTests(TempCase):
         # on "not tracked" — the manifest-less case is what is under test here.
         git(bare, "init", "-q", "-b", "main")
         for tool in ("update.py", "check_kit.py", "check_portability.py"):
-            done = subprocess.run([sys.executable, str(bare / "tools" / tool)],
-                                  capture_output=True, text=True, cwd=str(bare))
+            done = run_tool(bare, tool, cwd=bare)
             self.assertEqual(done.returncode, 2, tool + ": " + done.stdout + done.stderr)
             self.assertIn("self-heal", done.stderr, tool)
 
@@ -1139,11 +1163,7 @@ class UpdateEndToEndTests(TempCase):
         self.assertTrue((self.base / "mine/notes.md").exists())
 
     def test_check_mode_reports_a_newer_version_and_changes_nothing(self):
-        done = subprocess.run(
-            [sys.executable, str(self.base / "tools" / "update.py"),
-             "--branch", "main", "--check"],
-            capture_output=True, text=True,
-        )
+        done = run_update(self.base, "--check")
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("1.0.0", done.stdout)
         self.assertEqual((self.base / "rules/canon.md").read_text(), "old canon\n")
@@ -1167,10 +1187,7 @@ class SyncTests(TempCase):
         git(self.base, "commit", "-qm", "start")
 
     def run_sync(self, *args):
-        return subprocess.run(
-            [sys.executable, str(self.base / "tools" / "sync.py"), *args],
-            capture_output=True, text=True,
-        )
+        return run_tool(self.base, "sync.py", *args)
 
     def test_a_base_with_no_remote_is_told_it_lives_on_one_machine(self):
         # This fixture has no remote, which is the loudest state there is — not a quiet one.
@@ -1186,7 +1203,7 @@ class SyncTests(TempCase):
         the test's own name.
         """
         remote = Path(self.tmp.name) / "their-remote.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        bare_remote(remote)
         git(self.base, "remote", "add", "origin", str(remote))
         git(self.base, "push", "-q", "-u", "origin", "main")
         done = self.run_sync("status")
@@ -1274,11 +1291,11 @@ class DivergenceAndOutageTests(TempCase):
         super().setUp()
         root = self.tmpdir
         self.remote = root / "remote.git"
-        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(self.remote)], check=True)
+        bare_remote(self.remote)
         # Seed the remote first. Cloning an EMPTY repository twice gives each copy its own root
         # commit, which is a different situation entirely — covered by its own test below.
         seed = root / "seed"
-        subprocess.run(["git", "clone", "-q", str(self.remote), str(seed)], check=True)
+        clone(self.remote, seed)
         git(seed, "config", "user.name", "t")
         git(seed, "config", "user.email", "t@example.invalid")
         write(seed, "base.md", "the base\n")
@@ -1289,7 +1306,7 @@ class DivergenceAndOutageTests(TempCase):
         self.laptop = self._clone(root / "laptop")
 
     def _clone(self, path: Path) -> Path:
-        subprocess.run(["git", "clone", "-q", str(self.remote), str(path)], check=True)
+        clone(self.remote, path)
         git(path, "config", "user.name", "t")
         git(path, "config", "user.email", "t@example.invalid")
         (path / "tools").mkdir(exist_ok=True)
@@ -1297,8 +1314,7 @@ class DivergenceAndOutageTests(TempCase):
         return path
 
     def sync(self, base: Path, *args):
-        return subprocess.run([sys.executable, str(base / "tools" / "sync.py"), *args],
-                              capture_output=True, text=True)
+        return run_tool(base, "sync.py", *args)
 
     def test_work_on_two_sides_is_put_together_and_neither_is_dropped(self):
         write(self.laptop, "on-the-laptop.md", "written at the desk\n")
@@ -1323,7 +1339,7 @@ class DivergenceAndOutageTests(TempCase):
         make the rescue tool fail in the situation it exists for. I tried consolidating the three
         git helpers into one library and this is why only two of them moved.
         """
-        source = (KIT_ROOT / "tools" / "sync.py").read_text(encoding="utf-8")
+        source = kit_text("tools/sync.py")
         self.assertNotIn("from lib import", source)
         self.assertNotIn("import lib", source)
         for module in re.findall(r"^import (\w+)", source, re.M):
@@ -1336,7 +1352,7 @@ class DivergenceAndOutageTests(TempCase):
         # passed ARGUMENTS, not as words — these files explain in prose that they never rebase,
         # and a prose ban must not read as a violation of itself.
         for name in ("sync.py", "update.py", "check_kit.py"):
-            source = (KIT_ROOT / "tools" / name).read_text(encoding="utf-8")
+            source = kit_text("tools/" + name)
             for banned in ('"--force"', '"-f"', '"--hard"', '"rebase"', '"--force-with-lease"'):
                 self.assertNotIn(banned, source, "%s in %s disables the protection that makes "
                                                  "divergence recoverable" % (banned, name))
@@ -1348,7 +1364,7 @@ class DivergenceAndOutageTests(TempCase):
         holds today only because the updater issues `checkout` and nothing else — a property no
         gate stated, so a merge added here would have shipped green.
         """
-        source = (KIT_ROOT / "tools" / "update.py").read_text(encoding="utf-8")
+        source = kit_text("tools/update.py")
         for banned in ('"merge"', '"cherry-pick"', '"stash"', '"reset"', '"revert"'):
             self.assertNotIn(banned, source,
                              "%s can leave the person adjudicating a kit file they never wrote"
@@ -1461,11 +1477,7 @@ class InstallerTests(TempCase):
 
     def install(self):
         answers = "\n".join(a.format(home=self.home) for a in self.ANSWERS) + "\n"
-        # Declaring this is the point: without it the installer refuses, because an unanswered
-        # question taking a default is indistinguishable from a real answer in the output.
-        env = dict(os.environ, HOME=str(self.home), HARNESS_ANSWERS_ON_STDIN="1")
-        return subprocess.run(["bash", str(KIT_ROOT / "install.sh")], input=answers,
-                              capture_output=True, text=True, env=env, cwd=str(KIT_ROOT))
+        return run_installer(KIT_ROOT, self.home, answers, cwd=KIT_ROOT)
 
     def test_a_fresh_install_leaves_a_base_that_can_travel(self):
         done = self.install()
@@ -1683,9 +1695,7 @@ retired: []
         git(self.root, "commit", "-qm", "release 1.0.0")
 
     def gate(self, *args):
-        return subprocess.run(
-            [sys.executable, str(self.root / "tools" / "check_kit.py"), *args],
-            capture_output=True, text=True, cwd=str(self.root))
+        return run_tool(self.root, "check_kit.py", *args, cwd=self.root)
 
     def test_a_coherent_kit_passes(self):
         done = self.gate("--authoring")
@@ -2233,7 +2243,7 @@ class WindowsInstallerTests(unittest.TestCase):
                  if line.strip() == "Require-Answers"]
         self.assertEqual(len(calls), 1, "install.ps1 defines Require-Answers but never calls it")
         self.assertIn("HARNESS_ANSWERS_ON_STDIN", self.text)
-        shell = (KIT_ROOT / "install.sh").read_text(encoding="utf-8")
+        shell = kit_text("install.sh")
         self.assertIn("HARNESS_ANSWERS_ON_STDIN", shell)
         self.assertTrue(re.search(r"^require_answers\s*$", shell, re.M),
                         "install.sh defines require_answers but never calls it")
@@ -2263,7 +2273,7 @@ class WindowsInstallerTests(unittest.TestCase):
         name this installer suggests for it — and rewrites their `origin`, after which nothing
         can save their work anywhere.
         """
-        self.assertTrue("kit_remote" in (KIT_ROOT / "install.sh").read_text(encoding="utf-8"),
+        self.assertTrue("kit_remote" in kit_text("install.sh"),
                         "install.sh no longer reads kit_remote from the manifest")
         self.assertTrue("kit_remote" in self.text,
                         "install.ps1 does not read kit_remote from the manifest")
@@ -2277,7 +2287,7 @@ class WindowsInstallerTests(unittest.TestCase):
 
     def test_both_installers_ask_the_same_questions(self):
         """[CP-4] a mechanism with a platform twin moves in lockstep."""
-        shell = (KIT_ROOT / "install.sh").read_text(encoding="utf-8")
+        shell = kit_text("install.sh")
         for question in ("Where should your base live?", "What should the base folder be called?",
                          "What language should the agent talk to you in?", "Do you use Claude Code?",
                          "Move it inside the base?", "Set that up now?", "Your name", "Your email"):
@@ -2290,7 +2300,7 @@ class WindowsInstallerTests(unittest.TestCase):
         Claude Code's block was verified after install and Codex's was not, in both installers
         identically — so it was an oversight rather than a platform difference.
         """
-        shell = (KIT_ROOT / "install.sh").read_text(encoding="utf-8")
+        shell = kit_text("install.sh")
         for runtime, entry in (("Claude Code", ".claude/CLAUDE.md"), ("Codex", ".codex/AGENTS.md")):
             self.assertIn('check "%s global wiring"' % runtime, shell, runtime)
             self.assertIn(entry, shell, entry)
@@ -2313,7 +2323,7 @@ class WindowsInstallerTests(unittest.TestCase):
                               % (name.name, block.strip()[:100]))
 
     def test_both_doctors_check_the_same_things(self):
-        shell = (KIT_ROOT / "install.sh").read_text(encoding="utf-8")
+        shell = kit_text("install.sh")
         in_shell = set(re.findall(r'check "([^"]*)"', shell)) - {"label"}
         in_windows = set(re.findall(r'Check "([^"]*)"', self.text))
         # The one allowed asymmetry: bash hard-requires python3 at the top instead of checking.
@@ -2325,16 +2335,13 @@ class ShippedKitTests(unittest.TestCase):
     """The kit in this working tree is coherent — the same gate a release runs."""
 
     def test_structural_gate_passes(self):
-        done = subprocess.run(
-            [sys.executable, str(KIT_ROOT / "tools" / "check_kit.py")],
-            capture_output=True, text=True, cwd=str(KIT_ROOT),
-        )
+        done = run_tool(KIT_ROOT, "check_kit.py", cwd=KIT_ROOT)
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
 
     def test_every_rule_is_listed_once_in_the_one_contract(self):
         rules = sorted(p.name for p in (KIT_ROOT / "rules").glob("*.md"))
-        contract = (KIT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        bridge = (KIT_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+        contract = kit_text("AGENTS.md")
+        bridge = kit_text("CLAUDE.md")
         for name in rules:
             self.assertIn(name, contract, "%s is silently not in force" % name)
             self.assertNotIn("@rules/%s" % name, bridge, "the canon list must exist once")
@@ -2343,7 +2350,7 @@ class ShippedKitTests(unittest.TestCase):
         # The list is the one place the canon can be got wrong, and on a person's base nobody runs
         # the release gate. So the instruction itself has to close the hole: a rule on disk that
         # the list omits still binds, and the session that notices repairs it.
-        contract = (KIT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        contract = kit_text("AGENTS.md")
         self.assertIn("not named above is a rule the list has LOST", contract)
         # And that adopting one is a decision, not a step: a file that simply appeared in
         # `rules/` is a claim on every future session that nobody made.
@@ -2353,8 +2360,8 @@ class ShippedKitTests(unittest.TestCase):
     def test_safety_and_git_safety_do_not_restate_each_other(self):
         # Two rules over one subject drift. git-safety owns git; safety owns everything else and
         # each names the other rather than repeating it.
-        git_rule = (KIT_ROOT / "rules" / "git-safety.md").read_text(encoding="utf-8")
-        safety = (KIT_ROOT / "rules" / "safety.md").read_text(encoding="utf-8")
+        git_rule = kit_text("rules/git-safety.md")
+        safety = kit_text("rules/safety.md")
         self.assertIn("rules/safety.md", git_rule)
         self.assertIn("rules/git-safety.md", safety)
         self.assertNotIn("--force", safety, "the force list has one home, and it is git-safety")
