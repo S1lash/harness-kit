@@ -4,6 +4,19 @@ The sanctioned history home for this repo (the one place `present-not-history` a
 change — like `knowledge/decisions.md` for decisions). The canon itself always describes the
 present; evolution is logged here.
 
+## 2026-08-31
+
+- The gate's checks move to `tools/lib/kitchecks.py`, leaving `tools/check_kit.py` to decide only
+  how a person hears about them. A failure is one shape now — where to look, what is wrong, why it
+  costs something — so the path leads the line instead of sitting mid-sentence in twenty-seven
+  hand-written formats, and a check that could not run says so instead of passing in silence.
+- The canon check matched `@rules/<name>` anywhere in `AGENTS.md`, so any line CONTAINING a correct
+  entry satisfied it — a typo, a trailing word, a paste gone wrong. The rule then reached no
+  runtime at all while the gate called the kit ready to ship. It matches the whole line now.
+- The tests standing up a remote could each choose whether to put its HEAD on `main`; two did and
+  three did not, and a clone of the wrong kind lands on `master`, where the divergence a test is
+  about never happens and it passes for the wrong reason. One helper now does it every time.
+
 ## 2026-08-30
 
 The platform layer: the cross-platform rule stops depending on somebody remembering it.
